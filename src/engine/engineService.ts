@@ -1,5 +1,6 @@
 import { Chess, Square } from 'chess.js';
 import { ChessEngineMoveLine, EngineStatus } from '../types/chess';
+import { calculateBestMoves, EngineResult } from './localEngine';
 
 type EvalCallback = (lines: ChessEngineMoveLine[]) => void;
 type StatusCallback = (status: EngineStatus) => void;
@@ -17,6 +18,8 @@ class ChessEngineService {
   private engineVersionName: string = 'Stockfish 16 (NNUE WebAssembly)';
   private isEngineReady: boolean = false;
   private preferredEngine: 'sf16' | 'sf10' = 'sf16';
+  private useLocalFallback: boolean = false;
+  private readyTimeout: number | null = null;
 
   private rawLinesMap: Map<number, {
     depth: number;
@@ -37,8 +40,9 @@ class ChessEngineService {
   }
 
   public setPreferredEngine(engine: 'sf16' | 'sf10') {
-    if (this.preferredEngine === engine && this.worker) return;
+    if (this.preferredEngine === engine && this.worker && this.isEngineReady) return;
     this.preferredEngine = engine;
+    this.useLocalFallback = false;
     this.initEngine(engine);
     if (this.currentFen) {
       this.startAnalysis(this.currentFen, { depth: this.currentDepth, multiPv: this.multiPvCount });
@@ -49,8 +53,38 @@ class ChessEngineService {
     return this.preferredEngine;
   }
 
+  private enableLocalEngineFallback() {
+    this.useLocalFallback = true;
+    this.isEngineReady = true;
+    this.engineVersionName = 'Built-in Engine (Fallback)';
+    if (this.worker) {
+      try {
+        this.worker.terminate();
+      } catch {}
+      this.worker = null;
+    }
+    this.broadcastStatus({
+      isCalculating: this.isCalculating,
+      depth: this.currentCalculatedDepth,
+      maxDepth: this.currentDepth,
+      nps: 20000,
+      nodes: 5000,
+      timeMs: Date.now() - this.startTime,
+      engineName: this.engineVersionName,
+      isStockfish: false,
+    });
+    if (this.isCalculating && this.currentFen) {
+      this.runLocalAnalysis(this.currentFen);
+    }
+  }
+
   private initEngine(engineChoice: 'sf16' | 'sf10' = 'sf16') {
     if (typeof window === 'undefined') return;
+
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+      this.readyTimeout = null;
+    }
 
     if (this.worker) {
       try {
@@ -61,10 +95,23 @@ class ChessEngineService {
 
     this.isEngineReady = false;
 
+    // Set fallback timeout if worker doesn't initialize
+    this.readyTimeout = window.setTimeout(() => {
+      if (!this.isEngineReady) {
+        if (engineChoice === 'sf16') {
+          console.warn('Stockfish 16 init timeout, trying Stockfish 10...');
+          this.initEngine('sf10');
+        } else {
+          console.warn('Stockfish 10 init timeout, activating local engine fallback...');
+          this.enableLocalEngineFallback();
+        }
+      }
+    }, 7000);
+
     if (engineChoice === 'sf16') {
       try {
-        // Load Stockfish 16 Single-Threaded NNUE Wasm
-        const sf16Worker = new Worker('/stockfish-16.js#stockfish-nnue-16-single.wasm,worker');
+        // Load Stockfish 16 Single-Threaded NNUE Wasm Worker
+        const sf16Worker = new Worker('/stockfish-16.js');
         this.engineVersionName = 'Stockfish 16 (NNUE WebAssembly)';
 
         sf16Worker.onmessage = (event) => {
@@ -95,7 +142,8 @@ class ChessEngineService {
         };
 
         sf10Worker.onerror = (err) => {
-          console.warn('Stockfish 10 worker error:', err);
+          console.warn('Stockfish 10 worker error, activating fallback:', err);
+          this.enableLocalEngineFallback();
         };
 
         sf10Worker.postMessage('uci');
@@ -103,7 +151,8 @@ class ChessEngineService {
 
         this.worker = sf10Worker;
       } catch (e) {
-        console.warn('Failed to start Stockfish 10 worker:', e);
+        console.warn('Failed to start Stockfish 10 worker, activating fallback:', e);
+        this.enableLocalEngineFallback();
       }
     }
   }
@@ -118,7 +167,20 @@ class ChessEngineService {
     }
 
     if (line === 'uciok' || line === 'readyok') {
+      if (this.readyTimeout) {
+        clearTimeout(this.readyTimeout);
+        this.readyTimeout = null;
+      }
       this.isEngineReady = true;
+      this.useLocalFallback = false;
+
+      if (this.currentFen && this.isCalculating && this.worker) {
+        this.worker.postMessage('stop');
+        this.worker.postMessage(`setoption name MultiPV value ${this.multiPvCount}`);
+        this.worker.postMessage(`position fen ${this.currentFen}`);
+        this.worker.postMessage(`go depth ${this.currentDepth}`);
+      }
+
       this.broadcastStatus({
         isCalculating: this.isCalculating,
         depth: this.currentCalculatedDepth,
@@ -272,6 +334,49 @@ class ChessEngineService {
     });
   }
 
+  private runLocalAnalysis(fen: string) {
+    try {
+      const results = calculateBestMoves(
+        fen,
+        Math.min(this.currentDepth, 4),
+        this.multiPvCount
+      );
+      if (results.length > 0) {
+        const lines: ChessEngineMoveLine[] = results.map((r) => ({
+          id: r.multipv,
+          multipv: r.multipv,
+          depth: r.depth,
+          scoreCp: r.scoreCp,
+          mate: r.mate,
+          nodes: r.nodes,
+          nps: r.nps,
+          pv: r.pv,
+          pvSan: r.pvSan,
+          fromSquare: r.bestMoveUci.substring(0, 2) as Square,
+          toSquare: r.bestMoveUci.substring(2, 4) as Square,
+          promotion: r.bestMoveUci.length > 4 ? r.bestMoveUci[4] : undefined,
+          bestMoveUci: r.bestMoveUci,
+          bestMoveSan: r.bestMoveSan,
+        }));
+        this.broadcastEvaluation(lines);
+      }
+    } catch (e) {
+      console.warn('Local engine calculation error:', e);
+    } finally {
+      this.isCalculating = false;
+      this.broadcastStatus({
+        isCalculating: false,
+        depth: Math.min(this.currentDepth, 4),
+        maxDepth: this.currentDepth,
+        nps: 18000,
+        nodes: 5000,
+        timeMs: Date.now() - this.startTime,
+        engineName: this.engineVersionName,
+        isStockfish: false,
+      });
+    }
+  }
+
   public startAnalysis(fen: string, options?: { depth?: number; multiPv?: number }) {
     this.stopAnalysis();
 
@@ -318,11 +423,16 @@ class ChessEngineService {
           nodes: 0,
           timeMs: 0,
           engineName: this.engineVersionName,
-          isStockfish: true,
+          isStockfish: !this.useLocalFallback,
         });
         return;
       }
     } catch {}
+
+    if (this.useLocalFallback || !this.worker) {
+      this.runLocalAnalysis(fen);
+      return;
+    }
 
     if (this.worker) {
       this.worker.postMessage('stop');
@@ -355,7 +465,7 @@ class ChessEngineService {
         return;
       }
 
-      if (this.worker && this.isEngineReady) {
+      if (this.worker && this.isEngineReady && !this.useLocalFallback) {
         const targetDepth = Math.max(2, Math.min(10, difficultyLevel * 2));
         let resolved = false;
 
@@ -388,11 +498,31 @@ class ChessEngineService {
           if (!resolved) {
             resolved = true;
             this.worker?.removeEventListener('message', handleMsg);
+            const localMoves = calculateBestMoves(fen, Math.max(2, Math.min(4, difficultyLevel)), 1);
+            if (localMoves.length > 0 && localMoves[0].bestMoveUci.length >= 4) {
+              const uci = localMoves[0].bestMoveUci;
+              resolve({
+                from: uci.substring(0, 2) as Square,
+                to: uci.substring(2, 4) as Square,
+                promotion: uci.length > 4 ? uci[4] : undefined,
+              });
+              return;
+            }
             const fallback = moves[Math.floor(Math.random() * moves.length)];
             resolve({ from: fallback.from as Square, to: fallback.to as Square, promotion: fallback.promotion });
           }
         }, 1200);
       } else {
+        const localMoves = calculateBestMoves(fen, Math.max(2, Math.min(4, difficultyLevel)), 1);
+        if (localMoves.length > 0 && localMoves[0].bestMoveUci.length >= 4) {
+          const uci = localMoves[0].bestMoveUci;
+          resolve({
+            from: uci.substring(0, 2) as Square,
+            to: uci.substring(2, 4) as Square,
+            promotion: uci.length > 4 ? uci[4] : undefined,
+          });
+          return;
+        }
         const fallback = moves[Math.floor(Math.random() * moves.length)];
         resolve({ from: fallback.from as Square, to: fallback.to as Square, promotion: fallback.promotion });
       }
