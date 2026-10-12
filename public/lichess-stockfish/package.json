@@ -1,0 +1,30 @@
+{
+  "name": "@lichess-org/stockfish-web",
+  "version": "0.5.0",
+  "//": "version is managed by the build system",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lichess-org/stockfish-web.git"
+  },
+  "author": "T-bone Duplexus",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "types": "stockfishWeb.d.ts",
+  "files": [
+    "sf_19_smallnet.js",
+    "sf_19_smallnet.wasm",
+    "sf_19.js",
+    "sf_19.wasm",
+    "sf_19_smallnet_relaxed-simd.js",
+    "sf_19_smallnet_relaxed-simd.wasm",
+    "sf_19_relaxed-simd.js",
+    "sf_19_relaxed-simd.wasm",
+    "fsf_14.js",
+    "fsf_14.wasm",
+    "stockfishWeb.d.ts"
+  ],
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "typescript": "^7.0.2"
+  }
+}
