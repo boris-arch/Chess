@@ -20,8 +20,10 @@ import { EnginePanel } from './components/EnginePanel';
 import { MoveHistory } from './components/MoveHistory';
 import { PlayEngineControls } from './components/PlayEngineControls';
 import { PositionSetupModal } from './components/PositionSetupModal';
+import { ChesscomSyncModal } from './components/ChesscomSyncModal';
 import { HelpModal } from './components/HelpModal';
-import { Sparkles, Book, AlertCircle, Share2, Check } from 'lucide-react';
+import { Sparkles, Book, AlertCircle, Share2, Check, Radio } from 'lucide-react';
+import { fetchLiveGameCallback, fetchDailyGames, fetchRecentGames } from './utils/chesscom';
 
 export default function App() {
   // Main Chess Game state
@@ -68,8 +70,16 @@ export default function App() {
   const [isEngineThinking, setIsEngineThinking] = useState(false);
   const [gameStatusBanner, setGameStatusBanner] = useState<string | null>(null);
 
-  // Modals
+  // Modals & Sync
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
+  const [isChesscomModalOpen, setIsChesscomModalOpen] = useState(false);
+  const [isChesscomSyncActive, setIsChesscomSyncActive] = useState(false);
+  const [chesscomUsername, setChesscomUsername] = useState(() => {
+    return localStorage.getItem('chesscom_username') || 'pecanduLCbkp';
+  });
+  const [chesscomLiveGameId, setChesscomLiveGameId] = useState<string | null>(null);
+  const [liveWatchMoveCount, setLiveWatchMoveCount] = useState<number>(0);
+  const [lastSyncedLivePgn, setLastSyncedLivePgn] = useState<string>('');
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isCopiedShare, setIsCopiedShare] = useState(false);
 
@@ -384,6 +394,108 @@ export default function App() {
     }
   };
 
+  // Refs for tracking sync changes without resetting intervals
+  const lastSyncedLivePgnRef = useRef<string>('');
+  const lastCheckedArchiveUrlRef = useRef<string>('');
+
+  // Real-time Chess.com Live Game Polling Watcher
+  useEffect(() => {
+    if (!chesscomLiveGameId) return;
+
+    let isMounted = true;
+    const poll = async () => {
+      try {
+        const res = await fetchLiveGameCallback(chesscomLiveGameId);
+        if (!isMounted) return;
+
+        if (res.success && res.pgn && res.pgn !== lastSyncedLivePgnRef.current) {
+          lastSyncedLivePgnRef.current = res.pgn;
+          setLastSyncedLivePgn(res.pgn);
+          setLiveWatchMoveCount(res.moveCount || 0);
+          handleLoadPgn(res.pgn);
+
+          // Auto-orient board to player's color if username matches
+          const cleanUser = chesscomUsername.trim().toLowerCase();
+          if (res.black && res.black.toLowerCase() === cleanUser) {
+            setOrientation('black');
+          } else if (res.white && res.white.toLowerCase() === cleanUser) {
+            setOrientation('white');
+          }
+
+          if (res.isFinished) {
+            setGameStatusBanner(`Chess.com Game #${chesscomLiveGameId} has concluded!`);
+          } else {
+            setGameStatusBanner(`Live Game #${chesscomLiveGameId}: Move ${Math.ceil((res.moveCount || 1) / 2)} received!`);
+          }
+        }
+      } catch {}
+    };
+
+    poll();
+    const interval = window.setInterval(poll, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [chesscomLiveGameId, chesscomUsername]);
+
+  // Chess.com Username Auto-Sync Background Watcher
+  useEffect(() => {
+    if (!isChesscomSyncActive || !chesscomUsername) return;
+
+    let isMounted = true;
+
+    const pollUser = async () => {
+      try {
+        const cleanUser = chesscomUsername.trim().toLowerCase();
+
+        // 1. Check daily games first (if user plays correspondence)
+        const daily = await fetchDailyGames(cleanUser);
+        if (!isMounted) return;
+        if (daily.length > 0) {
+          const top = daily[0];
+          if (top.pgn && top.pgn !== lastSyncedLivePgnRef.current) {
+            lastSyncedLivePgnRef.current = top.pgn;
+            setLastSyncedLivePgn(top.pgn);
+            handleLoadPgn(top.pgn);
+            const isWhite = top.white.username.toLowerCase() === cleanUser;
+            setOrientation(isWhite ? 'white' : 'black');
+            setGameStatusBanner(`Synced @${cleanUser}'s active game: ${top.white.username} vs ${top.black.username}`);
+            return;
+          }
+        }
+
+        // 2. Check archives for newly completed or latest live games
+        const recents = await fetchRecentGames(cleanUser, 2);
+        if (!isMounted) return;
+        if (recents.length > 0) {
+          const latest = recents[0];
+          if (!lastCheckedArchiveUrlRef.current || latest.url !== lastCheckedArchiveUrlRef.current) {
+            lastCheckedArchiveUrlRef.current = latest.url;
+            if (latest.pgn && latest.pgn !== lastSyncedLivePgnRef.current) {
+              lastSyncedLivePgnRef.current = latest.pgn;
+              setLastSyncedLivePgn(latest.pgn);
+              handleLoadPgn(latest.pgn);
+              const isWhite = latest.white.username.toLowerCase() === cleanUser;
+              setOrientation(isWhite ? 'white' : 'black');
+              setGameStatusBanner(`Synced @${cleanUser}'s latest game (${latest.white.username} vs ${latest.black.username})`);
+            }
+          }
+        }
+      } catch {}
+    };
+
+    // Run immediately when sync is enabled!
+    pollUser();
+    const interval = window.setInterval(pollUser, 3000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [isChesscomSyncActive, chesscomUsername]);
+
   // Play a move recommendation from the engine panel
   const handlePlayEngineMove = (uci: string) => {
     if (!uci || uci.length < 4) return;
@@ -439,6 +551,10 @@ export default function App() {
         onFlipBoard={handleFlipBoard}
         onResetGame={handleResetGame}
         onOpenSetupModal={() => setIsSetupModalOpen(true)}
+        onOpenChesscomModal={() => setIsChesscomModalOpen(true)}
+        isChesscomSyncActive={isChesscomSyncActive}
+        chesscomUsername={chesscomUsername}
+        activeLiveGameId={chesscomLiveGameId}
         soundEnabled={soundEnabled}
         onToggleSound={() => setSoundEnabled((prev) => !prev)}
         theme={theme}
@@ -448,6 +564,64 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 md:p-6 flex flex-col gap-4">
+        {/* Live Game Sync Floating Banner */}
+        {chesscomLiveGameId ? (
+          <div className="bg-rose-950/60 border border-rose-500/50 rounded-xl px-4 py-2 flex items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
+              <div>
+                <span className="font-bold text-xs sm:text-sm text-white">
+                  Live Game Sync: #{chesscomLiveGameId}
+                </span>
+                <span className="text-[11px] text-stone-300 ml-2 hidden sm:inline">
+                  • Moves: {liveWatchMoveCount} • Board auto-advances on each move
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsChesscomModalOpen(true)}
+                className="px-2.5 py-1 text-[11px] bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg font-semibold transition-colors cursor-pointer"
+              >
+                Game Info
+              </button>
+              <button
+                onClick={() => setChesscomLiveGameId(null)}
+                className="px-2.5 py-1 text-[11px] bg-rose-900/90 hover:bg-rose-800 text-rose-200 rounded-lg font-semibold transition-colors cursor-pointer"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        ) : isChesscomSyncActive && chesscomUsername ? (
+          <div className="bg-emerald-950/60 border border-emerald-500/50 rounded-xl px-4 py-2 flex items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <div>
+                <span className="font-bold text-xs sm:text-sm text-white">
+                  Chess.com Auto-Sync Active: @{chesscomUsername}
+                </span>
+                <span className="text-[11px] text-stone-300 ml-2 hidden sm:inline">
+                  • Monitoring for new moves &amp; finished matches in real time
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsChesscomModalOpen(true)}
+                className="px-2.5 py-1 text-[11px] bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg font-semibold transition-colors cursor-pointer"
+              >
+                Sync Settings
+              </button>
+              <button
+                onClick={() => setIsChesscomSyncActive(false)}
+                className="px-2.5 py-1 text-[11px] bg-rose-900/80 hover:bg-rose-800 text-rose-200 rounded-lg font-semibold transition-colors cursor-pointer"
+              >
+                Pause Sync
+              </button>
+            </div>
+          </div>
+        ) : null}
         {/* Active Opening Banner */}
         {currentOpening && (
           <div className="bg-stone-900/90 border border-emerald-500/30 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
@@ -591,6 +765,25 @@ export default function App() {
         onLoadFen={handleLoadFen}
         onLoadPgn={handleLoadPgn}
         currentFen={fen}
+      />
+
+      {/* Chess.com Live Game Sync Modal */}
+      <ChesscomSyncModal
+        isOpen={isChesscomModalOpen}
+        onClose={() => setIsChesscomModalOpen(false)}
+        onLoadFen={handleLoadFen}
+        onLoadPgn={handleLoadPgn}
+        onSetOrientation={(ori) => setOrientation(ori)}
+        isSyncActive={isChesscomSyncActive}
+        activeUsername={chesscomUsername}
+        onToggleSync={(active, user) => {
+          setIsChesscomSyncActive(active);
+          setChesscomUsername(user);
+        }}
+        activeLiveGameId={chesscomLiveGameId}
+        onStartLiveGameWatch={(gameId) => setChesscomLiveGameId(gameId)}
+        onStopLiveGameWatch={() => setChesscomLiveGameId(null)}
+        liveWatchMoveCount={liveWatchMoveCount}
       />
 
       {/* Help & Calculator Guide Modal */}

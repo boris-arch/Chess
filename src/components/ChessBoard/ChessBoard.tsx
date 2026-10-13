@@ -76,12 +76,23 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   // Drag state
   const [draggingSquare, setDraggingSquare] = useState<Square | null>(null);
   const [hoveredDropSquare, setHoveredDropSquare] = useState<Square | null>(null);
+  const [dragCursor, setDragCursor] = useState<{ x: number; y: number } | null>(null);
+  const [dragSquareSize, setDragSquareSize] = useState<number>(64);
 
   const boardRef = useRef<HTMLDivElement>(null);
   const floatingPieceRef = useRef<HTMLDivElement>(null);
-  const draggingSquareRef = useRef<Square | null>(null);
   const hoveredSquareRef = useRef<Square | null>(null);
-  draggingSquareRef.current = draggingSquare;
+
+  const dragInfoRef = useRef<{
+    startSquare: Square;
+    startX: number;
+    startY: number;
+    hasDragged: boolean;
+    pieceColor: string;
+    pieceType: string;
+    squareSize: number;
+    wasSelectedBeforeDown: boolean;
+  } | null>(null);
 
   // Board orientation
   const displayFiles = orientation === 'white' ? FILES : [...FILES].reverse();
@@ -112,7 +123,7 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
     }
   }
 
-  // Convert client coordinates (x, y) to chess square
+  // Convert client coordinates (x, y) to chess square with edge tolerance
   const getSquareFromCoords = useCallback(
     (clientX: number, clientY: number): Square | null => {
       if (!boardRef.current) return null;
@@ -120,12 +131,10 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
       const x = clientX - rect.left;
       const y = clientY - rect.top;
 
-      if (x < 0 || x > rect.width || y < 0 || y > rect.height) return null;
+      if (x < -16 || x > rect.width + 16 || y < -16 || y > rect.height + 16) return null;
 
-      const col = Math.floor((x / rect.width) * 8);
-      const row = Math.floor((y / rect.height) * 8);
-
-      if (col < 0 || col >= 8 || row < 0 || row >= 8) return null;
+      const col = Math.min(7, Math.max(0, Math.floor((x / rect.width) * 8)));
+      const row = Math.min(7, Math.max(0, Math.floor((y / rect.height) * 8)));
 
       const file = displayFiles[col];
       const rank = displayRanks[row];
@@ -155,99 +164,134 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
     [game, onMove]
   );
 
-  // Handle click on square (Click-to-Move)
-  const handleSquareClick = (square: Square) => {
-    if (disabled || pendingPromotion) return;
-
-    if (selectedSquare) {
-      if (selectedSquare === square) {
-        // Deselect on re-click
-        setSelectedSquare(null);
-        return;
-      }
-
-      // Check if clicked square is a legal destination
-      const moves = game.moves({ square: selectedSquare as ChessSquare, verbose: true });
-      const isLegal = moves.some((m) => m.to === square);
-
-      if (isLegal) {
-        executeMove(selectedSquare, square);
-        return;
-      }
-
-      // If clicked another friendly piece, switch selection
-      const clickedPiece = game.get(square as ChessSquare);
-      if (clickedPiece && clickedPiece.color === game.turn()) {
-        setSelectedSquare(square);
-        return;
-      }
-
-      // Clicked elsewhere - deselect
-      setSelectedSquare(null);
-    } else {
-      // Select piece if it's the current player's piece
-      const piece = game.get(square as ChessSquare);
-      if (piece && piece.color === game.turn()) {
-        setSelectedSquare(square);
-      }
-    }
-  };
-
-  // Pointer Down (Drag start or Click start)
+  // Unified Pointer Down handler (manages both click-to-move and drag start)
   const handlePointerDown = (e: React.PointerEvent, square: Square) => {
-    if (disabled || pendingPromotion) return;
+    if (disabled || pendingPromotion || e.button !== 0) return;
+    e.preventDefault();
 
-    const piece = game.get(square as ChessSquare);
+    const clickedPiece = game.get(square as ChessSquare);
+    const rect = boardRef.current?.getBoundingClientRect();
+    const sqSize = rect ? rect.width / 8 : 64;
 
-    // If already selected another piece and tapping on a legal target square
+    // Case 1: A piece was already selected, and player clicked a destination
     if (selectedSquare && selectedSquare !== square) {
       const moves = game.moves({ square: selectedSquare as ChessSquare, verbose: true });
       const isLegal = moves.some((m) => m.to === square);
+
       if (isLegal) {
         executeMove(selectedSquare, square);
         return;
       }
+
+      // If clicked another friendly piece, switch selection to it and allow dragging it
+      if (clickedPiece && clickedPiece.color === game.turn()) {
+        setSelectedSquare(square);
+        dragInfoRef.current = {
+          startSquare: square,
+          startX: e.clientX,
+          startY: e.clientY,
+          hasDragged: false,
+          pieceColor: clickedPiece.color,
+          pieceType: clickedPiece.type,
+          squareSize: sqSize,
+          wasSelectedBeforeDown: false,
+        };
+        setDragSquareSize(sqSize);
+        setDragCursor({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      // Clicked an invalid, non-friendly square: deselect
+      setSelectedSquare(null);
+      return;
     }
 
-    if (piece && piece.color === game.turn()) {
-      setSelectedSquare(square);
-      setDraggingSquare(square);
-      if (floatingPieceRef.current) {
-        floatingPieceRef.current.style.transform = `translate3d(${e.clientX - 32}px, ${e.clientY - 32}px, 0)`;
-      }
+    // Case 2: Player clicked on their piece (or clicked the currently selected piece)
+    if (clickedPiece && clickedPiece.color === game.turn()) {
+      const wasSelected = selectedSquare === square;
+      dragInfoRef.current = {
+        startSquare: square,
+        startX: e.clientX,
+        startY: e.clientY,
+        hasDragged: false,
+        pieceColor: clickedPiece.color,
+        pieceType: clickedPiece.type,
+        squareSize: sqSize,
+        wasSelectedBeforeDown: wasSelected,
+      };
+      setDragSquareSize(sqSize);
+      setDragCursor({ x: e.clientX, y: e.clientY });
+      return;
     }
+
+    // Case 3: Clicked empty square with nothing selected
+    setSelectedSquare(null);
   };
 
-  // Global pointer move and up listeners for fluid dragging without pointer capture issues
+  // Global pointer move and up listeners for fluid dragging without pointer capture conflicts
   useEffect(() => {
     const handleGlobalPointerMove = (e: PointerEvent) => {
-      if (!draggingSquareRef.current) return;
-      if (floatingPieceRef.current) {
-        floatingPieceRef.current.style.transform = `translate3d(${e.clientX - 32}px, ${e.clientY - 32}px, 0)`;
+      const dragInfo = dragInfoRef.current;
+      if (!dragInfo) return;
+
+      const dx = e.clientX - dragInfo.startX;
+      const dy = e.clientY - dragInfo.startY;
+
+      // Start drag once moved past threshold of 4px
+      if (!dragInfo.hasDragged && Math.hypot(dx, dy) >= 4) {
+        dragInfo.hasDragged = true;
+        setDraggingSquare(dragInfo.startSquare);
+        setSelectedSquare(dragInfo.startSquare);
+        setDragCursor({ x: e.clientX, y: e.clientY });
       }
 
-      const hoverSq = getSquareFromCoords(e.clientX, e.clientY);
-      if (hoverSq !== hoveredSquareRef.current) {
-        hoveredSquareRef.current = hoverSq;
-        setHoveredDropSquare(hoverSq);
+      if (dragInfo.hasDragged) {
+        if (floatingPieceRef.current) {
+          const half = dragInfo.squareSize / 2;
+          floatingPieceRef.current.style.transform = `translate3d(${e.clientX - half}px, ${e.clientY - half}px, 0)`;
+        }
+
+        const hoverSq = getSquareFromCoords(e.clientX, e.clientY);
+        if (hoverSq !== hoveredSquareRef.current) {
+          hoveredSquareRef.current = hoverSq;
+          setHoveredDropSquare(hoverSq);
+        }
       }
     };
 
     const handleGlobalPointerUp = (e: PointerEvent) => {
-      const currentDrag = draggingSquareRef.current;
-      if (!currentDrag) return;
+      const dragInfo = dragInfoRef.current;
+      if (!dragInfo) return;
 
-      const dropSq = getSquareFromCoords(e.clientX, e.clientY);
-
+      dragInfoRef.current = null;
+      hoveredSquareRef.current = null;
       setDraggingSquare(null);
       setHoveredDropSquare(null);
-      hoveredSquareRef.current = null;
 
-      if (dropSq && dropSq !== currentDrag) {
-        const moves = game.moves({ square: currentDrag as ChessSquare, verbose: true });
-        const isLegal = moves.some((m) => m.to === dropSq);
-        if (isLegal) {
-          executeMove(currentDrag, dropSq);
+      if (dragInfo.hasDragged) {
+        // Drop occurred after a drag
+        const dropSq = getSquareFromCoords(e.clientX, e.clientY);
+        if (dropSq && dropSq !== dragInfo.startSquare) {
+          const moves = game.moves({ square: dragInfo.startSquare as ChessSquare, verbose: true });
+          const isLegal = moves.some((m) => m.to === dropSq);
+          if (isLegal) {
+            executeMove(dragInfo.startSquare, dropSq);
+          } else {
+            // Keep the piece selected if dropped on an invalid square
+            setSelectedSquare(dragInfo.startSquare);
+          }
+        } else {
+          // Dropped on the same square: keep selected
+          setSelectedSquare(dragInfo.startSquare);
+        }
+      } else {
+        // Pure click/tap without dragging
+        if (dragInfo.wasSelectedBeforeDown) {
+          // Re-clicked selected piece: deselect
+          setSelectedSquare(null);
+        } else {
+          // Clicked friendly piece: select it
+          setSelectedSquare(dragInfo.startSquare);
         }
       }
     };
@@ -289,6 +333,8 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
       {/* Board container */}
       <div
         ref={boardRef}
+        onDragStart={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()}
         style={{ touchAction: 'none' }}
         className="w-full h-full grid grid-cols-8 grid-rows-8 rounded-xl overflow-hidden relative shadow-inner cursor-pointer"
       >
@@ -315,8 +361,8 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
             return (
               <div
                 key={square}
-                onClick={() => handleSquareClick(square)}
                 onPointerDown={(e) => handlePointerDown(e, square)}
+                onDragStart={(e) => e.preventDefault()}
                 style={{
                   backgroundColor: isLight ? themeStyle.light : themeStyle.dark,
                 }}
@@ -330,7 +376,7 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
                   isHoveredLineFrom || isHoveredLineTo
                     ? 'ring-2 ring-inset ring-emerald-400 after:absolute after:inset-0 after:bg-emerald-400/20'
                     : ''
-                } ${isHoveredTarget ? 'brightness-110 scale-[0.98]' : ''}`}
+                } ${isHoveredTarget ? 'brightness-110 ring-2 ring-inset ring-amber-400/70' : ''}`}
                 data-square={square}
               >
                 {/* King in Check Pulsating Alert */}
@@ -364,7 +410,7 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
                 {/* Legal move indicators */}
                 {isLegalTarget && !piece && (
                   <div
-                    className={`absolute w-3.5 h-3.5 md:w-5 md:h-5 rounded-full pointer-events-none z-10 transition-transform ${
+                    className={`absolute inset-0 m-auto w-3.5 h-3.5 md:w-5 md:h-5 rounded-full pointer-events-none z-10 transition-transform ${
                       isHoveredTarget
                         ? 'scale-125 bg-stone-900/60 ring-2 ring-amber-400'
                         : 'bg-stone-900/25'
@@ -384,8 +430,8 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
                 {/* Piece Rendering */}
                 {piece && (
                   <div
-                    className={`w-[88%] h-[88%] flex items-center justify-center transition-all duration-75 z-20 drop-shadow-md pointer-events-none ${
-                      isCurrentlyDraggingThis ? 'opacity-20 scale-90' : 'hover:scale-105'
+                    className={`w-[88%] h-[88%] flex items-center justify-center select-none z-20 drop-shadow-md pointer-events-none transition-opacity duration-75 ${
+                      isCurrentlyDraggingThis ? 'opacity-20' : 'opacity-100'
                     }`}
                   >
                     <ChessPiece color={piece.color} type={piece.type} />
@@ -530,12 +576,19 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
       </div>
 
       {/* Floating Dragged Piece Cursor Follower */}
-      {draggingSquare && draggedPiece && (
+      {draggingSquare && draggedPiece && dragCursor && (
         <div
           ref={floatingPieceRef}
-          className="fixed pointer-events-none z-50 w-16 h-16 top-0 left-0 flex items-center justify-center filter drop-shadow-2xl scale-110 will-change-transform"
+          style={{
+            width: `${dragSquareSize}px`,
+            height: `${dragSquareSize}px`,
+            transform: `translate3d(${dragCursor.x - dragSquareSize / 2}px, ${dragCursor.y - dragSquareSize / 2}px, 0)`,
+          }}
+          className="fixed pointer-events-none z-50 top-0 left-0 flex items-center justify-center filter drop-shadow-2xl scale-110 will-change-transform"
         >
-          <ChessPiece color={draggedPiece.color} type={draggedPiece.type} />
+          <div className="w-[88%] h-[88%] flex items-center justify-center">
+            <ChessPiece color={draggedPiece.color} type={draggedPiece.type} />
+          </div>
         </div>
       )}
     </div>

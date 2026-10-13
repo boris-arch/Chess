@@ -12,135 +12,290 @@ export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-f
 
   switch (type) {
     case 'p': // PAWN
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White Pawn">
+            <path
+              d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"
+              fill="#ffffff"
+              stroke="#1c1917"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} Pawn`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black Pawn">
           <path
-            d="m 22.5,9 c -2.21,0 -4,1.79 -4,4 0,0.89 0.29,1.71 0.78,2.38 C 17.33,16.5 16,18.59 16,21 c 0,2.03 0.94,3.84 2.41,5.03 C 15.41,27.09 11,31.58 11,39.5 l 23,0 c 0,-7.92 -4.41,-12.41 -7.41,-13.47 C 28.06,24.84 29,23.03 29,21 29,18.59 27.67,16.5 25.72,15.38 26.21,14.71 26.5,13.89 26.5,13 c 0,-2.21 -1.79,-4 -4,-4 z"
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
+            d="M22.5 9a4 4 0 0 0-3.22 6.38 6.48 6.48 0 0 0-.87 10.65c-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47a6.46 6.46 0 0 0-.87-10.65A4.01 4.01 0 0 0 22.5 9z"
+            fill="#1c1917"
+            stroke="#000000"
             strokeWidth="1.5"
             strokeLinecap="round"
-            strokeLinejoin="round"
           />
-          {isWhite && (
-            <path
-              d="m 22.5,10 c -1.66,0 -3,1.34 -3,3 0,0.7 0.24,1.35 0.65,1.86 C 18.23,16.03 17,18.12 17,20.5 c 0,1.86 0.82,3.52 2.13,4.65 C 16.5,26.4 12.5,30.5 12.5,38 l 20,0 c 0,-7.5 -4,-11.6 -6.63,-12.85 C 27.18,24.02 28,22.36 28,20.5 28,18.12 26.77,16.03 24.85,14.86 25.26,14.35 25.5,13.7 25.5,13 c 0,-1.66 -1.34,-3 -3,-3 z"
-              fill="#ffffff"
-            />
-          )}
         </svg>
       );
 
     case 'n': // KNIGHT
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White Knight">
+            <g
+              fill="none"
+              fillRule="evenodd"
+              stroke="#1c1917"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            >
+              <path fill="#ffffff" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" />
+              <path
+                fill="#ffffff"
+                d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"
+              />
+              <circle cx="9.5" cy="25.5" r="1" fill="#1c1917" stroke="none" />
+              <path
+                fill="#1c1917"
+                stroke="none"
+                d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z"
+                transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)"
+              />
+            </g>
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} Knight`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black Knight">
           <g
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
-            strokeWidth="1.5"
+            fill="none"
+            fillRule="evenodd"
+            stroke="#000000"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="1.5"
           >
-            <path d="M 22,10 C 32.5,11 38.5,18 38,39 L 15,39 C 15,30 25,32.5 23,18" />
-            <path d="M 24,18 C 24.38,20.91 18.45,25.37 16,27 C 13,29 13.18,31.34 11,31 C 9.958,30.06 12.41,27.96 11,28 C 10,28 11.19,29.23 10,30 C 9,30 5.997,31 6,26 C 6,24 12,14 12,14 C 12,14 13.89,12.1 14,10.5 C 13.27,7.4 17.06,5.05 18,5.5 C 18.66,6.86 17.96,8.24 18,9 C 20,7.5 21,7.5 22,10 z" />
-            <circle cx="9.5" cy="25.5" r="1" fill={isWhite ? '#292524' : '#ffffff'} stroke="none" />
+            <path fill="#1c1917" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21" />
             <path
+              fill="#1c1917"
+              d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.04-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-1-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-2 2.5-3c1 0 1 3 1 3"
+            />
+            <circle cx="9.5" cy="25.5" r="1" fill="#f5f5f4" stroke="#f5f5f4" />
+            <path
+              fill="#f5f5f4"
+              stroke="none"
               d="M 15 15.5 A 0.5 1.5 0 1 1 14,15.5 A 0.5 1.5 0 1 1 15 15.5 z"
               transform="matrix(0.866,0.5,-0.5,0.866,9.693,-5.173)"
-              fill={isWhite ? '#292524' : '#ffffff'}
+            />
+            <path
+              fill="#f5f5f4"
               stroke="none"
+              d="m24.55 10.4-.45 1.45.5.15c3.15 1 5.65 2.49 7.9 6.75S35.75 29.06 35.25 39l-.05.5h2.25l.05-.5c.5-10.06-.88-16.85-3.25-21.34s-5.79-6.64-9.19-7.16z"
             />
           </g>
         </svg>
       );
 
     case 'b': // BISHOP
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White Bishop">
+            <g
+              fill="none"
+              fillRule="evenodd"
+              stroke="#1c1917"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            >
+              <g fill="#ffffff" strokeLinecap="butt">
+                <path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.94 3-2 3-2z" />
+                <path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z" />
+                <path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z" />
+              </g>
+              <path strokeLinejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" />
+            </g>
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} Bishop`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black Bishop">
           <g
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
-            strokeWidth="1.5"
+            fill="none"
+            fillRule="evenodd"
+            stroke="#000000"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="1.5"
           >
-            <path d="M 9,36 C 12.39,35.03 19.11,36.43 22.5,34 C 25.89,36.43 32.61,35.03 36,36 C 36,36 37.65,36.54 39,38 C 38.32,38.97 37.35,38.99 36,38.5 C 32.61,37.53 25.89,38.96 22.5,37.5 C 19.11,38.96 12.39,37.53 9,38.5 C 7.646,38.99 6.677,38.97 6,38 C 7.354,36.54 9,36 9,36 z" />
-            <path d="M 15,32 C 17.5,34.5 27.5,34.5 30,32 C 30.5,30.5 30,30 30,30 C 30,27.5 27.5,26 27.5,26 C 33,24.5 33.5,14.5 22.5,10.5 C 11.5,14.5 12,24.5 17.5,26 C 17.5,26 15,27.5 15,30 C 15,30 14.5,30.5 15,32 z" />
-            <circle cx="22.5" cy="8" r="2.5" />
+            <g fill="#1c1917" strokeLinecap="butt">
+              <path d="M9 36c3.4-1 10.1.4 13.5-2 3.4 2.4 10.1 1 13.5 2 0 0 1.6.5 3 2-.7 1-1.6 1-3 .5-3.4-1-10.1.5-13.5-1-3.4 1.5-10.1 0-13.5 1-1.4.5-2.3.5-3-.5 1.4-2 3-2 3-2z" />
+              <path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z" />
+              <path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z" />
+            </g>
+            <path stroke="#f5f5f4" strokeLinejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5" />
           </g>
-          <path
-            d="M 17.5,26 L 27.5,26 M 15,30 L 30,30 M 22.5,15.5 L 22.5,20.5 M 20,18 L 25,18"
-            stroke={isWhite ? '#292524' : '#ffffff'}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
         </svg>
       );
 
     case 'r': // ROOK
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White Rook">
+            <g
+              fill="#ffffff"
+              fillRule="evenodd"
+              stroke="#1c1917"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            >
+              <path strokeLinecap="butt" d="M9 39h27v-3H9zm3-3v-4h21v4zm-1-22V9h4v2h5V9h5v2h5V9h4v5" />
+              <path d="m34 14-3 3H14l-3-3" />
+              <path strokeLinecap="butt" strokeLinejoin="miter" d="M31 17v12.5H14V17" />
+              <path d="m31 29.5 1.5 2.5h-20l1.5-2.5" />
+              <path fill="none" strokeLinejoin="miter" d="M11 14h23" />
+            </g>
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} Rook`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black Rook">
           <g
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
-            strokeWidth="1.5"
+            fill="#1c1917"
+            fillRule="evenodd"
+            stroke="#000000"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="1.5"
           >
-            <path d="M 9,39 L 36,39 L 36,36 L 9,36 L 9,39 z" />
-            <path d="M 12,36 L 12,32 L 33,32 L 33,36 L 12,36 z" />
-            <path d="M 11,14 L 11,9 L 15,9 L 15,11 L 20,11 L 20,9 L 25,9 L 25,11 L 30,11 L 30,9 L 34,9 L 34,14" />
-            <path d="M 34,14 L 31,17 L 14,17 L 11,14" />
-            <path d="M 31,17 L 31,29.5 L 14,29.5 L 14,17" />
-            <path d="M 31,29.5 L 32.5,32 L 12.5,32 L 14,29.5" />
-            <path d="M 11,14 L 34,14" />
+            <path strokeLinecap="butt" d="M9 39h27v-3H9zm3.5-7 1.5-2.5h17l1.5 2.5zm-.5 4v-4h21v4z" />
+            <path strokeLinecap="butt" strokeLinejoin="miter" d="M14 29.5v-13h17v13z" />
+            <path strokeLinecap="butt" d="M14 16.5 11 14h23l-3 2.5zM11 14V9h4v2h5V9h5v2h5V9h4v5z" />
+            <path
+              fill="none"
+              stroke="#f5f5f4"
+              strokeLinejoin="miter"
+              strokeWidth="1"
+              d="M12 35.5h21m-20-4h19m-18-2h17m-17-13h17M11 14h23"
+            />
           </g>
         </svg>
       );
 
     case 'q': // QUEEN
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White Queen">
+            <g
+              fill="#ffffff"
+              fillRule="evenodd"
+              stroke="#1c1917"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            >
+              <path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0m16.5-4.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0M16 8.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0M33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0" />
+              <path strokeLinecap="butt" d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14z" />
+              <path
+                strokeLinecap="butt"
+                d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"
+              />
+              <path fill="none" d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0" />
+            </g>
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} Queen`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black Queen">
           <g
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
-            strokeWidth="1.5"
+            fill="#1c1917"
+            fillRule="evenodd"
+            stroke="#000000"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="1.5"
           >
-            <circle cx="6" cy="12" r="2.75" />
-            <circle cx="14" cy="9" r="2.75" />
-            <circle cx="22.5" cy="8" r="2.75" />
-            <circle cx="31" cy="9" r="2.75" />
-            <circle cx="39" cy="12" r="2.75" />
-            <path d="M 9,26 C 17.5,24.5 30,24.5 36,26 L 38.5,13.5 L 31,25 L 30.7,10.5 L 22.5,24.5 L 14.3,10.5 L 14,25 L 6.5,13.5 L 9,26 z" />
-            <path d="M 9,26 C 9,28 10.5,28 11.5,30 C 12.5,31.5 12.5,31 12,33.5 C 10.5,34.5 10.5,36 10.5,36 C 9,37.5 11,38.5 11,38.5 L 34,38.5 C 34,38.5 36,37.5 34.5,36 C 34.5,36 34.5,34.5 33,33.5 C 32.5,31 32.5,31.5 33.5,30 C 34.5,28 36,28 36,26 L 9,26 z" />
-            <path d="M 11.5,30 C 15,29 30,29 33.5,30" stroke={isWhite ? '#292524' : '#ffffff'} fill="none" />
-            <path d="M 12,33.5 C 18,32.5 27,32.5 33,33.5" stroke={isWhite ? '#292524' : '#ffffff'} fill="none" />
+            <g stroke="none" fill="#1c1917">
+              <circle cx="6" cy="12" r="2.75" />
+              <circle cx="14" cy="9" r="2.75" />
+              <circle cx="22.5" cy="8" r="2.75" />
+              <circle cx="31" cy="9" r="2.75" />
+              <circle cx="39" cy="12" r="2.75" />
+            </g>
+            <path
+              strokeLinecap="butt"
+              d="M9 26c8.5-1.5 21-1.5 27 0l2.5-12.5L31 25l-.3-14.1-5.2 13.6-3-14.5-3 14.5-5.2-13.6L14 25 6.5 13.5z"
+            />
+            <path
+              strokeLinecap="butt"
+              d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"
+            />
+            <path fill="none" strokeLinecap="butt" d="M11 38.5a35 35 1 0 0 23 0" />
+            <path
+              fill="none"
+              stroke="#f5f5f4"
+              d="M11 29a35 35 1 0 1 23 0m-21.5 2.5h20m-21 3a35 35 1 0 0 22 0m-23 3a35 35 1 0 0 24 0"
+            />
           </g>
         </svg>
       );
 
     case 'k': // KING
+      if (isWhite) {
+        return (
+          <svg viewBox="0 0 45 45" className={className} aria-label="White King">
+            <g
+              fill="none"
+              fillRule="evenodd"
+              stroke="#1c1917"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+            >
+              <path strokeLinejoin="miter" d="M22.5 11.63V6M20 8h5" />
+              <path
+                fill="#ffffff"
+                strokeLinecap="butt"
+                strokeLinejoin="miter"
+                d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"
+              />
+              <path
+                fill="#ffffff"
+                d="M11.5 37c5.5 3.5 15.5 3.5 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10z"
+              />
+              <path d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0" />
+            </g>
+          </svg>
+        );
+      }
       return (
-        <svg viewBox="0 0 45 45" className={className} aria-label={`${isWhite ? 'White' : 'Black'} King`}>
+        <svg viewBox="0 0 45 45" className={className} aria-label="Black King">
           <g
-            fill={isWhite ? '#ffffff' : '#1c1917'}
-            stroke={isWhite ? '#292524' : '#000000'}
-            strokeWidth="1.5"
+            fill="none"
+            fillRule="evenodd"
+            stroke="#000000"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="1.5"
           >
-            {/* Cross */}
-            <path d="M 22.5,11.63 L 22.5,6" stroke={isWhite ? '#292524' : '#ffffff'} />
-            <path d="M 20,8 L 25,8" stroke={isWhite ? '#292524' : '#ffffff'} />
-            {/* Crown */}
-            <path d="M 22.5,25 C 22.5,25 27,17.5 25.5,14.5 C 25.5,14.5 24.5,12 22.5,12 C 20.5,12 19.5,14.5 19.5,14.5 C 18,17.5 22.5,25 22.5,25" />
-            <path d="M 11.5,37 C 17,40.5 28,40.5 33.5,37 C 36.5,36 37.5,31 35.5,27 C 34.5,25 32.5,24 29.5,24 C 26.5,24 25,25.5 22.5,25.5 C 20,25.5 18.5,24 15.5,24 C 12.5,24 10.5,25 9.5,27 C 7.5,31 8.5,36 11.5,37 z" />
-            <path d="M 11.5,30 C 17,27 28,27 33.5,30" stroke={isWhite ? '#292524' : '#ffffff'} fill="none" />
-            <path d="M 11.5,33.5 C 17,30.5 28,30.5 33.5,33.5" stroke={isWhite ? '#292524' : '#ffffff'} fill="none" />
-            <path d="M 11.5,37 C 17,34 28,34 33.5,37" stroke={isWhite ? '#292524' : '#ffffff'} fill="none" />
+            <path strokeLinejoin="miter" d="M22.5 11.6V6" />
+            <path
+              fill="#1c1917"
+              strokeLinecap="butt"
+              strokeLinejoin="miter"
+              d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"
+            />
+            <path
+              fill="#1c1917"
+              d="M11.5 37a22.3 22.3 0 0 0 21 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-3.5-7.5-13-10.5-16-4-3 6 5 10 5 10z"
+            />
+            <path strokeLinejoin="miter" d="M20 8h5" />
+            <path
+              stroke="#f5f5f4"
+              d="M32 29.5s8.5-4 6-9.7C34.1 14 25 18 22.5 24.6v2.1-2.1C20 18 9.9 14 7 19.9c-2.5 5.6 4.8 9 4.8 9"
+            />
+            <path stroke="#f5f5f4" d="M11.5 30c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0m-21 3.5c5.5-3 15.5-3 21 0" />
           </g>
         </svg>
       );
