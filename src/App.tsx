@@ -22,8 +22,7 @@ import { PlayEngineControls } from './components/PlayEngineControls';
 import { PositionSetupModal } from './components/PositionSetupModal';
 import { ChesscomSyncModal } from './components/ChesscomSyncModal';
 import { HelpModal } from './components/HelpModal';
-import { Sparkles, Book, AlertCircle, Share2, Check, Radio } from 'lucide-react';
-import { fetchLiveGameCallback, fetchDailyGames, fetchRecentGames } from './utils/chesscom';
+import { Sparkles, Book, AlertCircle, Share2, Check, X, AlertTriangle, RefreshCw, FileText } from 'lucide-react';
 
 export default function App() {
   // Main Chess Game state
@@ -70,33 +69,147 @@ export default function App() {
   const [isEngineThinking, setIsEngineThinking] = useState(false);
   const [gameStatusBanner, setGameStatusBanner] = useState<string | null>(null);
 
-  // Modals & Sync
+  // Modals & State
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isChesscomModalOpen, setIsChesscomModalOpen] = useState(false);
-  const [isChesscomSyncActive, setIsChesscomSyncActive] = useState(false);
   const [chesscomUsername, setChesscomUsername] = useState(() => {
-    return localStorage.getItem('chesscom_username') || 'pecanduLCbkp';
+    return localStorage.getItem('chesscom_username') || '';
   });
-  const [chesscomLiveGameId, setChesscomLiveGameId] = useState<string | null>(null);
-  const [liveWatchMoveCount, setLiveWatchMoveCount] = useState<number>(0);
-  const [lastSyncedLivePgn, setLastSyncedLivePgn] = useState<string>('');
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isCopiedShare, setIsCopiedShare] = useState(false);
+  const [activeMatchPlayers, setActiveMatchPlayers] = useState<{
+    white: string;
+    black: string;
+    whiteRating?: number;
+    blackRating?: number;
+  } | null>(null);
 
-  // Ref to hold latest game instance for timeouts
+  // Blunder Alert State
+  const [blunderAlert, setBlunderAlert] = useState<{
+    san: string;
+    moveNumber: number;
+    player: 'White' | 'Black';
+    drop: number;
+    prevEval: number;
+    currentEval: number;
+    depth?: number;
+  } | null>(null);
+
+  // Minimum search depth required to trigger blunder alerts (prevents shallow false positives)
+  const [blunderMinDepth, setBlunderMinDepth] = useState<number>(() => {
+    const saved = localStorage.getItem('blunder_min_depth');
+    return saved ? Math.max(1, Number(saved)) : 10;
+  });
+  const blunderMinDepthRef = useRef(blunderMinDepth);
+  blunderMinDepthRef.current = blunderMinDepth;
+
+  // Ref to hold latest game instance and move history for engine evaluation tracking
   const gameRef = useRef(game);
   gameRef.current = game;
+  const moveHistoryRef = useRef(moveHistory);
+  moveHistoryRef.current = moveHistory;
+  const currentMoveIndexRef = useRef(currentMoveIndex);
+  currentMoveIndexRef.current = currentMoveIndex;
+
+  // Baseline evaluation refs for blunder tracking across positions
+  const prevPositionScoreRef = useRef<{ fen: string; scoreCp: number } | null>(null);
+  const currentPositionScoreRef = useRef<{ fen: string; scoreCp: number; depth: number } | null>(null);
+  const blunderCheckedForFenRef = useRef<string | null>(null);
 
   // Sound sync
   useEffect(() => {
     sound.setEnabled(soundEnabled);
   }, [soundEnabled]);
 
-  // Subscribe to engine callbacks
+  // Subscribe to engine callbacks and detect significant blunders (> 2 points drop)
+  // Only triggers when engine search depth meets or exceeds blunderMinDepth threshold
   useEffect(() => {
     const unsubEval = engineService.subscribeEvaluation((lines) => {
       setEngineLines(lines);
+
+      if (lines.length > 0) {
+        const top = lines[0];
+        let currentCp = 0;
+        if (top.mate !== null) {
+          currentCp = top.mate > 0 ? 10000 - top.mate * 10 : -10000 - top.mate * 10;
+        } else if (top.scoreCp !== null) {
+          currentCp = top.scoreCp;
+        }
+
+        const currentFen = gameRef.current.fen();
+
+        // If position transitioned to a new move/FEN, the last stable position eval becomes the baseline
+        if (currentPositionScoreRef.current && currentPositionScoreRef.current.fen !== currentFen) {
+          prevPositionScoreRef.current = {
+            fen: currentPositionScoreRef.current.fen,
+            scoreCp: currentPositionScoreRef.current.scoreCp,
+          };
+          blunderCheckedForFenRef.current = null;
+        }
+
+        // Keep updating current position score and depth as engine searches deeper
+        currentPositionScoreRef.current = {
+          fen: currentFen,
+          scoreCp: currentCp,
+          depth: top.depth,
+        };
+
+        const minDepthRequired = blunderMinDepthRef.current;
+        const reachedRequiredDepth = top.depth >= minDepthRequired;
+        const prev = prevPositionScoreRef.current;
+
+        // Evaluate blunder ONLY if:
+        // 1. We have a baseline evaluation for the position before this move
+        // 2. The engine has reached the configured minimum search depth threshold (preventing shallow false positives)
+        // 3. We haven't already evaluated and flagged this position
+        if (
+          prev &&
+          prev.fen !== currentFen &&
+          reachedRequiredDepth &&
+          blunderCheckedForFenRef.current !== currentFen
+        ) {
+          const history = moveHistoryRef.current;
+          const currentIdx = currentMoveIndexRef.current;
+          if (currentIdx >= 0 && currentIdx < history.length) {
+            const lastMoveRec = history[currentIdx];
+            if (!lastMoveRec.evalScore) {
+              lastMoveRec.evalScore = currentCp;
+              blunderCheckedForFenRef.current = currentFen;
+
+              // Calculate drop in pawns from the perspective of the player who made the move
+              let dropPawns = 0;
+              if (lastMoveRec.turn === 'w') {
+                // White moved: a drop is prevCp - currentCp
+                dropPawns = (prev.scoreCp - currentCp) / 100;
+              } else {
+                // Black moved: a drop for Black is currentCp - prevCp (White gained advantage)
+                dropPawns = (currentCp - prev.scoreCp) / 100;
+              }
+
+              // Significant blunder condition: evaluation drops by more than 2 points (2.0 pawns)
+              if (dropPawns >= 2.0) {
+                lastMoveRec.isBlunder = true;
+                lastMoveRec.evalDrop = dropPawns;
+                const prevDisplay = (lastMoveRec.turn === 'w' ? prev.scoreCp : -prev.scoreCp) / 100;
+                const currentDisplay = (lastMoveRec.turn === 'w' ? currentCp : -currentCp) / 100;
+
+                setBlunderAlert({
+                  san: lastMoveRec.san,
+                  moveNumber: lastMoveRec.moveNumber,
+                  player: lastMoveRec.turn === 'w' ? 'White' : 'Black',
+                  drop: dropPawns,
+                  prevEval: prevDisplay,
+                  currentEval: currentDisplay,
+                  depth: top.depth,
+                });
+                sound.playIllegal();
+              }
+            }
+          }
+        }
+      }
     });
+
     const unsubStatus = engineService.subscribeStatus((status) => {
       setEngineStatus(status);
     });
@@ -327,6 +440,11 @@ export default function App() {
     setCapturedWhite([]);
     setCapturedBlack([]);
     setGameStatusBanner(null);
+    setBlunderAlert(null);
+    setActiveMatchPlayers(null);
+    prevPositionScoreRef.current = null;
+    currentPositionScoreRef.current = null;
+    blunderCheckedForFenRef.current = null;
     sound.playMove();
   };
 
@@ -342,6 +460,10 @@ export default function App() {
       setCapturedWhite([]);
       setCapturedBlack([]);
       setGameStatusBanner(null);
+      setBlunderAlert(null);
+      prevPositionScoreRef.current = null;
+      currentPositionScoreRef.current = null;
+      blunderCheckedForFenRef.current = null;
       sound.playMove();
       return true;
     } catch {
@@ -355,13 +477,25 @@ export default function App() {
       const newGame = new Chess();
       newGame.loadPgn(pgnStr);
 
+      const headers = newGame.header();
+      const initialFen = headers['FEN'] || undefined;
       const history = newGame.history({ verbose: true });
-      const replayGame = new Chess();
+      let replayGame: Chess;
+      try {
+        replayGame = initialFen ? new Chess(initialFen) : new Chess();
+      } catch {
+        replayGame = new Chess();
+      }
       const records: MoveRecord[] = [];
 
       for (const m of history) {
         const fenBefore = replayGame.fen();
-        replayGame.move(m);
+        try {
+          replayGame.move(m);
+        } catch {
+          // Break gracefully if any downstream move fails replay
+          break;
+        }
         records.push({
           san: m.san,
           uci: `${m.from}${m.to}${m.promotion || ''}`,
@@ -394,107 +528,27 @@ export default function App() {
     }
   };
 
-  // Refs for tracking sync changes without resetting intervals
-  const lastSyncedLivePgnRef = useRef<string>('');
-  const lastCheckedArchiveUrlRef = useRef<string>('');
-
-  // Real-time Chess.com Live Game Polling Watcher
-  useEffect(() => {
-    if (!chesscomLiveGameId) return;
-
-    let isMounted = true;
-    const poll = async () => {
-      try {
-        const res = await fetchLiveGameCallback(chesscomLiveGameId);
-        if (!isMounted) return;
-
-        if (res.success && res.pgn && res.pgn !== lastSyncedLivePgnRef.current) {
-          lastSyncedLivePgnRef.current = res.pgn;
-          setLastSyncedLivePgn(res.pgn);
-          setLiveWatchMoveCount(res.moveCount || 0);
-          handleLoadPgn(res.pgn);
-
-          // Auto-orient board to player's color if username matches
-          const cleanUser = chesscomUsername.trim().toLowerCase();
-          if (res.black && res.black.toLowerCase() === cleanUser) {
-            setOrientation('black');
-          } else if (res.white && res.white.toLowerCase() === cleanUser) {
-            setOrientation('white');
-          }
-
-          if (res.isFinished) {
-            setGameStatusBanner(`Chess.com Game #${chesscomLiveGameId} has concluded!`);
-          } else {
-            setGameStatusBanner(`Live Game #${chesscomLiveGameId}: Move ${Math.ceil((res.moveCount || 1) / 2)} received!`);
-          }
+  const handleQuickPasteMoves = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const clean = text ? text.trim() : '';
+      if (clean) {
+        if (clean.includes('/') && clean.split('/').length >= 7) {
+          handleLoadFen(clean);
+          setActiveMatchPlayers(null);
+          setGameStatusBanner('Pasted FEN position loaded onto board!');
+          return;
         }
-      } catch {}
-    };
-
-    poll();
-    const interval = window.setInterval(poll, 2000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [chesscomLiveGameId, chesscomUsername]);
-
-  // Chess.com Username Auto-Sync Background Watcher
-  useEffect(() => {
-    if (!isChesscomSyncActive || !chesscomUsername) return;
-
-    let isMounted = true;
-
-    const pollUser = async () => {
-      try {
-        const cleanUser = chesscomUsername.trim().toLowerCase();
-
-        // 1. Check daily games first (if user plays correspondence)
-        const daily = await fetchDailyGames(cleanUser);
-        if (!isMounted) return;
-        if (daily.length > 0) {
-          const top = daily[0];
-          if (top.pgn && top.pgn !== lastSyncedLivePgnRef.current) {
-            lastSyncedLivePgnRef.current = top.pgn;
-            setLastSyncedLivePgn(top.pgn);
-            handleLoadPgn(top.pgn);
-            const isWhite = top.white.username.toLowerCase() === cleanUser;
-            setOrientation(isWhite ? 'white' : 'black');
-            setGameStatusBanner(`Synced @${cleanUser}'s active game: ${top.white.username} vs ${top.black.username}`);
-            return;
-          }
+        const ok = handleLoadPgn(clean);
+        if (ok) {
+          setActiveMatchPlayers(null);
+          setGameStatusBanner('Pasted moves loaded onto board!');
+          return;
         }
-
-        // 2. Check archives for newly completed or latest live games
-        const recents = await fetchRecentGames(cleanUser, 2);
-        if (!isMounted) return;
-        if (recents.length > 0) {
-          const latest = recents[0];
-          if (!lastCheckedArchiveUrlRef.current || latest.url !== lastCheckedArchiveUrlRef.current) {
-            lastCheckedArchiveUrlRef.current = latest.url;
-            if (latest.pgn && latest.pgn !== lastSyncedLivePgnRef.current) {
-              lastSyncedLivePgnRef.current = latest.pgn;
-              setLastSyncedLivePgn(latest.pgn);
-              handleLoadPgn(latest.pgn);
-              const isWhite = latest.white.username.toLowerCase() === cleanUser;
-              setOrientation(isWhite ? 'white' : 'black');
-              setGameStatusBanner(`Synced @${cleanUser}'s latest game (${latest.white.username} vs ${latest.black.username})`);
-            }
-          }
-        }
-      } catch {}
-    };
-
-    // Run immediately when sync is enabled!
-    pollUser();
-    const interval = window.setInterval(pollUser, 3000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [isChesscomSyncActive, chesscomUsername]);
+      }
+    } catch {}
+    setIsChesscomModalOpen(true);
+  }, []);
 
   // Play a move recommendation from the engine panel
   const handlePlayEngineMove = (uci: string) => {
@@ -551,10 +605,7 @@ export default function App() {
         onFlipBoard={handleFlipBoard}
         onResetGame={handleResetGame}
         onOpenSetupModal={() => setIsSetupModalOpen(true)}
-        onOpenChesscomModal={() => setIsChesscomModalOpen(true)}
-        isChesscomSyncActive={isChesscomSyncActive}
-        chesscomUsername={chesscomUsername}
-        activeLiveGameId={chesscomLiveGameId}
+        onOpenImportModal={() => setIsChesscomModalOpen(true)}
         soundEnabled={soundEnabled}
         onToggleSound={() => setSoundEnabled((prev) => !prev)}
         theme={theme}
@@ -564,64 +615,33 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 md:p-6 flex flex-col gap-4">
-        {/* Live Game Sync Floating Banner */}
-        {chesscomLiveGameId ? (
-          <div className="bg-rose-950/60 border border-rose-500/50 rounded-xl px-4 py-2 flex items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
-              <div>
-                <span className="font-bold text-xs sm:text-sm text-white">
-                  Live Game Sync: #{chesscomLiveGameId}
-                </span>
-                <span className="text-[11px] text-stone-300 ml-2 hidden sm:inline">
-                  • Moves: {liveWatchMoveCount} • Board auto-advances on each move
-                </span>
-              </div>
+        {/* Imported Match Details (shown only if a game was imported) */}
+        {activeMatchPlayers && (
+          <div className="bg-stone-900/90 border border-stone-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+            <div className="flex items-center gap-2 text-stone-300">
+              <span className="font-bold text-emerald-400">Imported Match:</span>
+              <span className="font-semibold text-white">
+                {activeMatchPlayers.white} ({activeMatchPlayers.whiteRating || '?'}) vs{' '}
+                {activeMatchPlayers.black} ({activeMatchPlayers.blackRating || '?'})
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsChesscomModalOpen(true)}
                 className="px-2.5 py-1 text-[11px] bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg font-semibold transition-colors cursor-pointer"
               >
-                Game Info
+                Import Another
               </button>
               <button
-                onClick={() => setChesscomLiveGameId(null)}
-                className="px-2.5 py-1 text-[11px] bg-rose-900/90 hover:bg-rose-800 text-rose-200 rounded-lg font-semibold transition-colors cursor-pointer"
+                onClick={() => setActiveMatchPlayers(null)}
+                className="px-2.5 py-1 text-[11px] bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+                title="Clear match header"
               >
-                Disconnect
+                Clear Info
               </button>
             </div>
           </div>
-        ) : isChesscomSyncActive && chesscomUsername ? (
-          <div className="bg-emerald-950/60 border border-emerald-500/50 rounded-xl px-4 py-2 flex items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <div>
-                <span className="font-bold text-xs sm:text-sm text-white">
-                  Chess.com Auto-Sync Active: @{chesscomUsername}
-                </span>
-                <span className="text-[11px] text-stone-300 ml-2 hidden sm:inline">
-                  • Monitoring for new moves &amp; finished matches in real time
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsChesscomModalOpen(true)}
-                className="px-2.5 py-1 text-[11px] bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg font-semibold transition-colors cursor-pointer"
-              >
-                Sync Settings
-              </button>
-              <button
-                onClick={() => setIsChesscomSyncActive(false)}
-                className="px-2.5 py-1 text-[11px] bg-rose-900/80 hover:bg-rose-800 text-rose-200 rounded-lg font-semibold transition-colors cursor-pointer"
-              >
-                Pause Sync
-              </button>
-            </div>
-          </div>
-        ) : null}
+        )}
         {/* Active Opening Banner */}
         {currentOpening && (
           <div className="bg-stone-900/90 border border-emerald-500/30 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
@@ -646,6 +666,14 @@ export default function App() {
 
             <div className="flex items-center gap-2 shrink-0">
               <button
+                onClick={handleQuickPasteMoves}
+                title="Paste moves or FEN from clipboard"
+                className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline font-medium">Paste Moves</span>
+              </button>
+              <button
                 onClick={handleSharePosition}
                 title="Copy FEN to share"
                 className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -667,6 +695,40 @@ export default function App() {
           </div>
         )}
 
+        {/* Blunder Visual Alert Banner */}
+        {blunderAlert && (
+          <div className="bg-gradient-to-r from-red-950/90 via-rose-950/80 to-stone-900 border border-red-500/60 rounded-xl px-4 py-3 flex items-center justify-between gap-3 text-red-200 shadow-xl shadow-red-950/50 animate-in fade-in slide-in-from-top-2">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-red-600/30 text-red-400 border border-red-500/50 flex items-center justify-center font-black text-sm shrink-0">
+                ??
+              </div>
+              <div>
+                <div className="font-bold text-xs sm:text-sm text-red-100 flex items-center gap-2">
+                  <span>Blunder Alert!</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-red-900 border border-red-700 text-red-200 font-mono">
+                    {blunderAlert.player} Move {blunderAlert.moveNumber} ({blunderAlert.san})
+                  </span>
+                  {blunderAlert.depth ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-950 border border-red-800 text-red-300 font-mono">
+                      depth {blunderAlert.depth}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-[11px] text-red-300/90 mt-0.5">
+                  Evaluation dropped by <span className="font-bold text-red-100">-{blunderAlert.drop.toFixed(1)} points</span> (from {blunderAlert.prevEval > 0 ? '+' : ''}{blunderAlert.prevEval.toFixed(1)} to {blunderAlert.currentEval > 0 ? '+' : ''}{blunderAlert.currentEval.toFixed(1)}).
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setBlunderAlert(null)}
+              className="p-1.5 text-red-400 hover:text-white hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
+              title="Dismiss blunder alert"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Core Layout Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] xl:grid-cols-[auto_340px_340px] gap-4 items-start">
           {/* Left Column: Evaluation Bar + Chessboard */}
@@ -679,7 +741,44 @@ export default function App() {
             />
 
             {/* Interactive Chess Board with Arrows & Controls */}
-            <div className="flex-1 max-w-[620px]">
+            <div className="flex-1 max-w-[620px] flex flex-col gap-1.5">
+              {/* Top Player Bar (Opponent if viewing as White, User if viewing as Black) */}
+              <div className="flex items-center justify-between px-2.5 py-1.5 bg-stone-950/70 rounded-xl text-xs border border-stone-800">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-3 h-3 rounded-full border shadow-sm ${
+                      orientation === 'white'
+                        ? 'bg-stone-900 border-stone-600'
+                        : 'bg-white border-stone-300'
+                    }`}
+                  />
+                  <span className="font-bold text-white text-xs truncate max-w-[180px]">
+                    {orientation === 'white'
+                      ? activeMatchPlayers?.black || 'Black'
+                      : activeMatchPlayers?.white || 'White'}
+                  </span>
+                  {(orientation === 'white'
+                    ? activeMatchPlayers?.blackRating
+                    : activeMatchPlayers?.whiteRating) ? (
+                    <span className="text-[10px] text-stone-400 font-mono px-1.5 py-0.2 rounded bg-stone-900 border border-stone-800">
+                      {orientation === 'white'
+                        ? activeMatchPlayers?.blackRating
+                        : activeMatchPlayers?.whiteRating}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px]">
+                  {game.turn() === (orientation === 'white' ? 'b' : 'w') && (
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[10px] bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      To Move
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Chessboard Canvas */}
               <ChessBoard
                 game={game}
                 orientation={orientation}
@@ -691,6 +790,50 @@ export default function App() {
                 disabled={mode === 'play' && isEngineThinking}
                 hoveredMoveUci={hoveredMoveUci}
               />
+
+              {/* Bottom Player Bar */}
+              <div className="flex items-center justify-between px-2.5 py-1.5 bg-stone-950/70 rounded-xl text-xs border border-stone-800">
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-3 h-3 rounded-full border shadow-sm ${
+                      orientation === 'white'
+                        ? 'bg-white border-stone-300'
+                        : 'bg-stone-900 border-stone-600'
+                    }`}
+                  />
+                  <span className="font-bold text-white text-xs truncate max-w-[180px]">
+                    {orientation === 'white'
+                      ? activeMatchPlayers?.white || 'White'
+                      : activeMatchPlayers?.black || 'Black'}
+                  </span>
+                  {(orientation === 'white'
+                    ? activeMatchPlayers?.whiteRating
+                    : activeMatchPlayers?.blackRating) ? (
+                    <span className="text-[10px] text-stone-400 font-mono px-1.5 py-0.2 rounded bg-stone-900 border border-stone-800">
+                      {orientation === 'white'
+                        ? activeMatchPlayers?.whiteRating
+                        : activeMatchPlayers?.blackRating}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px]">
+                  {game.turn() === (orientation === 'white' ? 'w' : 'b') && (
+                    <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[10px] bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      To Move
+                    </span>
+                  )}
+                  <button
+                    onClick={handleFlipBoard}
+                    className="p-1 px-1.5 text-stone-300 hover:text-white rounded-lg bg-stone-900 hover:bg-stone-800 border border-stone-700 transition-colors cursor-pointer text-[10px] flex items-center gap-1 font-semibold"
+                    title={`Flip board perspective (Currently: ${orientation})`}
+                  >
+                    <RefreshCw className="w-3 h-3 text-emerald-400" />
+                    <span>Flip</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -715,6 +858,11 @@ export default function App() {
               onSelectEngine={(eng) => {
                 setSelectedEngine(eng);
                 engineService.setPreferredEngine(eng);
+              }}
+              blunderMinDepth={blunderMinDepth}
+              onChangeBlunderMinDepth={(d) => {
+                setBlunderMinDepth(d);
+                localStorage.setItem('blunder_min_depth', String(d));
               }}
             />
           </div>
@@ -767,23 +915,15 @@ export default function App() {
         currentFen={fen}
       />
 
-      {/* Chess.com Live Game Sync Modal */}
+      {/* Chess Game Import Modal */}
       <ChesscomSyncModal
         isOpen={isChesscomModalOpen}
         onClose={() => setIsChesscomModalOpen(false)}
         onLoadFen={handleLoadFen}
         onLoadPgn={handleLoadPgn}
         onSetOrientation={(ori) => setOrientation(ori)}
-        isSyncActive={isChesscomSyncActive}
-        activeUsername={chesscomUsername}
-        onToggleSync={(active, user) => {
-          setIsChesscomSyncActive(active);
-          setChesscomUsername(user);
-        }}
-        activeLiveGameId={chesscomLiveGameId}
-        onStartLiveGameWatch={(gameId) => setChesscomLiveGameId(gameId)}
-        onStopLiveGameWatch={() => setChesscomLiveGameId(null)}
-        liveWatchMoveCount={liveWatchMoveCount}
+        onSetMatchPlayers={setActiveMatchPlayers}
+        initialUsername={chesscomUsername}
       />
 
       {/* Help & Calculator Guide Modal */}

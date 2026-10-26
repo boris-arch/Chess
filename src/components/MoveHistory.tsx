@@ -115,13 +115,21 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
               {pair.white && (
                 <button
                   onClick={() => pair.whiteIdx !== undefined && onSelectMove(pair.whiteIdx)}
-                  className={`text-left px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                  className={`text-left px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center justify-between gap-1 ${
                     currentMoveIndex === pair.whiteIdx
                       ? 'bg-emerald-600 text-white font-bold'
                       : 'text-stone-200 hover:bg-stone-800'
                   }`}
                 >
-                  {pair.white.san}
+                  <span>{pair.white.san}</span>
+                  {pair.white.isBlunder && (
+                    <span
+                      title={`Blunder! Drop: -${pair.white.evalDrop?.toFixed(1)} points`}
+                      className="px-1 py-0.2 bg-red-600 text-white text-[9px] font-black rounded shrink-0 shadow-sm"
+                    >
+                      ??
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -129,13 +137,21 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
               {pair.black ? (
                 <button
                   onClick={() => pair.blackIdx !== undefined && onSelectMove(pair.blackIdx)}
-                  className={`text-left px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                  className={`text-left px-2 py-0.5 rounded cursor-pointer transition-colors flex items-center justify-between gap-1 ${
                     currentMoveIndex === pair.blackIdx
                       ? 'bg-emerald-600 text-white font-bold'
                       : 'text-stone-300 hover:bg-stone-800'
                   }`}
                 >
-                  {pair.black.san}
+                  <span>{pair.black.san}</span>
+                  {pair.black.isBlunder && (
+                    <span
+                      title={`Blunder! Drop: -${pair.black.evalDrop?.toFixed(1)} points`}
+                      className="px-1 py-0.2 bg-red-600 text-white text-[9px] font-black rounded shrink-0 shadow-sm"
+                    >
+                      ??
+                    </span>
+                  )}
                 </button>
               ) : (
                 <span />

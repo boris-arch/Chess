@@ -9,7 +9,6 @@
         "@tailwindcss/vite": "^4.3.3",
         "@vitejs/plugin-react": "^6.1.1",
         "canvas-confetti": "^1.9.4",
-        "chess-tcn": "^1.1.1",
         "chess.js": "^1.4.0",
         "dotenv": "^17.2.3",
         "express": "^4.21.2",
@@ -281,8 +280,6 @@
     "caniuse-lite": ["caniuse-lite@1.0.30001815", "", {}, "sha512-uDybUEyfgbyJJ93J1vikTylBX31AkdVYeVPeffMQpf8XN7hSfr0oZOn4VFOIMNvtU5+rHvC5Udg2TgtJKHm23Q=="],
 
     "canvas-confetti": ["canvas-confetti@1.9.4", "", {}, "sha512-yxQbJkAVrFXWNbTUjPqjF7G+g6pDotOUHGbkZq2NELZUMDpiJ85rIEazVb8GTaAptNW2miJAXbs1BtioA251Pw=="],
-
-    "chess-tcn": ["chess-tcn@1.1.1", "", { "dependencies": { "chess.js": "^1.4.0" } }, "sha512-tWBh2vRvYZb5Aom7rdf3OOp0Uvxj8IFSOEf/szF13EOMV+lvdt0nRCY0ouVcRPAn1HBZUABAi1itW5oUlI18zQ=="],
 
     "chess.js": ["chess.js@1.4.0", "", {}, "sha512-BBJgrrtKQOzFLonR0l+k64A98NLemPwNsCskwb+29bRwobUa4iTm51E1kwGPbWXAcfdDa18nad6vpPPKPWarqw=="],
 

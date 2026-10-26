@@ -1,6 +1,7 @@
 import React from 'react';
-import { Play, Pause, RefreshCw, Cpu, Zap, Eye, ChevronRight, Activity } from 'lucide-react';
+import { Play, Pause, RefreshCw, Cpu, Zap, Eye, ChevronRight, Activity, AlertTriangle } from 'lucide-react';
 import { ChessEngineMoveLine, EngineStatus } from '../types/chess';
+import { calculateWinProbability } from './EvaluationBar';
 
 interface EnginePanelProps {
   engineLines: ChessEngineMoveLine[];
@@ -19,6 +20,8 @@ interface EnginePanelProps {
   onHoverMove?: (uci: string | null) => void;
   selectedEngine?: 'sf16' | 'sf10';
   onSelectEngine?: (engine: 'sf16' | 'sf10') => void;
+  blunderMinDepth?: number;
+  onChangeBlunderMinDepth?: (depth: number) => void;
 }
 
 export const EnginePanel: React.FC<EnginePanelProps> = ({
@@ -38,6 +41,8 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
   onHoverMove,
   selectedEngine = 'sf16',
   onSelectEngine,
+  blunderMinDepth = 10,
+  onChangeBlunderMinDepth,
 }) => {
   const topCandidate = engineLines[0];
 
@@ -190,20 +195,30 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
               </span>
             </div>
 
-            {/* Score Pill */}
+            {/* Score & Win Probability Pill */}
             {(() => {
               const sc = formatScore(topCandidate);
+              const winProb = calculateWinProbability(topCandidate.scoreCp ?? 0, topCandidate.mate ?? null);
+              const favoredWinProb = Math.max(winProb, 100 - winProb);
               return (
-                <div
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-black tracking-tight shadow-md ${
-                    sc.isMate
-                      ? 'bg-purple-600 text-white ring-2 ring-purple-400/40'
-                      : sc.isWhiteAdvantage
-                      ? 'bg-stone-100 text-stone-950 ring-2 ring-emerald-500/30'
-                      : 'bg-stone-950 text-stone-100 border border-stone-700'
-                  }`}
-                >
-                  {sc.text}
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className={`px-3 py-1 rounded-lg text-xs font-mono font-black tracking-tight shadow-md ${
+                      sc.isMate
+                        ? 'bg-purple-600 text-white ring-2 ring-purple-400/40'
+                        : sc.isWhiteAdvantage
+                        ? 'bg-stone-100 text-stone-950 ring-2 ring-emerald-500/30'
+                        : 'bg-stone-950 text-stone-100 border border-stone-700'
+                    }`}
+                  >
+                    {sc.text}
+                  </div>
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-stone-950/80 text-emerald-400 border border-emerald-500/30 shadow-sm"
+                    title={`Win probability calculated using standard logistic function: ${favoredWinProb}%`}
+                  >
+                    {favoredWinProb}% Win
+                  </div>
                 </div>
               );
             })()}
@@ -303,9 +318,9 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <span
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-black ${
+                    className={`px-2 py-0.5 rounded-lg text-xs font-mono font-black ${
                       sc.isMate
                         ? 'bg-purple-950 text-purple-300 border border-purple-700'
                         : sc.isWhiteAdvantage
@@ -314,6 +329,12 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                     }`}
                   >
                     {sc.text}
+                  </span>
+                  <span
+                    className="text-[10px] text-emerald-400 font-mono font-bold hidden sm:inline"
+                    title="Win probability"
+                  >
+                    {Math.max(calculateWinProbability(line.scoreCp ?? 0, line.mate ?? null), 100 - calculateWinProbability(line.scoreCp ?? 0, line.mate ?? null))}%
                   </span>
                   <span className="text-[11px] text-stone-500 font-mono hidden sm:inline">
                     d{line.depth}
@@ -352,6 +373,29 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
             <option value="20">20 (Master ~3100 ELO)</option>
             <option value="24">24 (Grandmaster ~3500 ELO)</option>
             <option value="28">28 (Deep Analysis)</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className="font-semibold text-rose-300/90 flex items-center gap-1 cursor-help"
+            title="Minimum search depth required before triggering blunder alerts to prevent false positives from shallow evaluations"
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+            <span>Alert Depth:</span>
+          </span>
+          <select
+            value={blunderMinDepth}
+            onChange={(e) => onChangeBlunderMinDepth && onChangeBlunderMinDepth(Number(e.target.value))}
+            className="bg-stone-800 border border-stone-700 text-rose-200 font-semibold rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-rose-500 cursor-pointer"
+            title="Minimum search depth required before triggering blunder alerts to prevent false positives from shallow evaluations"
+          >
+            <option value="6">&gt; 6 (Fast)</option>
+            <option value="8">&gt; 8 (Quick)</option>
+            <option value="10">&gt; 10 (Standard)</option>
+            <option value="12">&gt; 12 (Deep)</option>
+            <option value="14">&gt; 14 (Thorough)</option>
+            <option value="16">&gt; 16 (Strict)</option>
           </select>
         </div>
 

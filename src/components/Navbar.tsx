@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCw, Volume2, VolumeX, Palette, HelpCircle, Bot, Compass, RefreshCw, FolderOpen, Radio } from 'lucide-react';
+import { RotateCw, Volume2, VolumeX, Palette, HelpCircle, Bot, Compass, RefreshCw, FolderOpen, FileText } from 'lucide-react';
 import { BoardTheme } from '../types/chess';
 
 interface NavbarProps {
@@ -9,10 +9,7 @@ interface NavbarProps {
   onFlipBoard: () => void;
   onResetGame: () => void;
   onOpenSetupModal: () => void;
-  onOpenChesscomModal: () => void;
-  isChesscomSyncActive: boolean;
-  chesscomUsername: string;
-  activeLiveGameId?: string | null;
+  onOpenImportModal: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
   theme: BoardTheme;
@@ -27,10 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onFlipBoard,
   onResetGame,
   onOpenSetupModal,
-  onOpenChesscomModal,
-  isChesscomSyncActive,
-  chesscomUsername,
-  activeLiveGameId,
+  onOpenImportModal,
   soundEnabled,
   onToggleSound,
   theme,
@@ -86,47 +80,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Quick Actions */}
         <div className="flex items-center gap-1.5">
-          {/* Chess.com Live Sync */}
+          {/* Import Game / PGN / FEN */}
           <button
-            onClick={onOpenChesscomModal}
-            title={
-              activeLiveGameId
-                ? `Auto-Moving with Chess.com Live Game #${activeLiveGameId}`
-                : isChesscomSyncActive
-                ? `Syncing Chess.com: @${chesscomUsername}`
-                : 'Sync with Chess.com games'
-            }
-            className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-              activeLiveGameId
-                ? 'bg-rose-950/80 border-rose-500/80 text-rose-300 ring-1 ring-rose-500/40 shadow-sm'
-                : isChesscomSyncActive
-                ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-300 ring-1 ring-emerald-500/40 shadow-sm'
-                : 'bg-stone-800 hover:bg-stone-700 border-stone-700 text-stone-300 hover:text-white'
-            }`}
+            onClick={onOpenImportModal}
+            title="Import Game (Paste PGN, FEN, or Load from Chess.com)"
+            className="px-2.5 py-1.5 rounded-lg border border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <Radio
-              className={`w-3.5 h-3.5 ${
-                activeLiveGameId
-                  ? 'text-rose-400 animate-pulse'
-                  : isChesscomSyncActive
-                  ? 'text-emerald-400 animate-pulse'
-                  : 'text-emerald-400'
-              }`}
-            />
-            <span className="hidden sm:inline">
-              {activeLiveGameId
-                ? `Live #${activeLiveGameId.slice(-4)}`
-                : isChesscomSyncActive
-                ? `@${chesscomUsername.slice(0, 8)}`
-                : 'Chess.com'}
-            </span>
-            {(activeLiveGameId || isChesscomSyncActive) && (
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  activeLiveGameId ? 'bg-rose-400 animate-ping' : 'bg-emerald-400 animate-ping'
-                }`}
-              />
-            )}
+            <FileText className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Import PGN</span>
           </button>
 
           {/* Preset / FEN Setup */}

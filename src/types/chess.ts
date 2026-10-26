@@ -56,6 +56,8 @@ export interface MoveRecord {
   moveNumber: number;
   evalScore?: number | null;
   evalMate?: number | null;
+  isBlunder?: boolean;
+  evalDrop?: number;
 }
 
 export interface OpeningInfo {
