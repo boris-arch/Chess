@@ -66,6 +66,49 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
     return { text: '0.00', isWhiteAdvantage: false, isMate: false };
   };
 
+  const getWinRateDetails = (line?: ChessEngineMoveLine) => {
+    const whiteWin = calculateWinProbability(line?.scoreCp ?? 0, line?.mate ?? null);
+    const blackWin = 100 - whiteWin;
+    if (whiteWin > 52) {
+      return {
+        whiteWin,
+        blackWin,
+        favoredSide: 'White' as const,
+        shortSide: 'W' as const,
+        favoredProb: whiteWin,
+        statusLabel:
+          whiteWin >= 80
+            ? 'White is Winning Decisively'
+            : whiteWin >= 65
+            ? 'White has Clear Advantage'
+            : 'White is Slightly Ahead',
+      };
+    }
+    if (blackWin > 52) {
+      return {
+        whiteWin,
+        blackWin,
+        favoredSide: 'Black' as const,
+        shortSide: 'B' as const,
+        favoredProb: blackWin,
+        statusLabel:
+          blackWin >= 80
+            ? 'Black is Winning Decisively'
+            : blackWin >= 65
+            ? 'Black has Clear Advantage'
+            : 'Black is Slightly Ahead',
+      };
+    }
+    return {
+      whiteWin,
+      blackWin,
+      favoredSide: 'Even' as const,
+      shortSide: 'Even' as const,
+      favoredProb: 50,
+      statusLabel: 'Equal Position (Balanced)',
+    };
+  };
+
   const getMoveInsight = (line?: ChessEngineMoveLine) => {
     if (!line || !line.bestMoveSan) return 'Engine calculating optimal tactical continuation...';
     const san = line.bestMoveSan;
@@ -84,6 +127,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
 
   // Depth progress percentage
   const depthPercent = Math.min(100, Math.round((engineStatus.depth / depthLimit) * 100));
+  const topWinDetails = getWinRateDetails(topCandidate);
 
   return (
     <div className="bg-stone-900/90 backdrop-blur-md border border-stone-800 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4 text-stone-200">
@@ -175,6 +219,63 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
         />
       </div>
 
+      {/* Explicit Who's Winning & Win Rate Breakdown Bar */}
+      <div className="bg-stone-950/90 border border-stone-800 rounded-xl p-3 flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+              Who&apos;s Winning:
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded-md font-extrabold text-xs flex items-center gap-1.5 ${
+                topWinDetails.favoredSide === 'White'
+                  ? 'bg-stone-100 text-stone-950 shadow-sm'
+                  : topWinDetails.favoredSide === 'Black'
+                  ? 'bg-stone-800 text-white border border-stone-600 shadow-sm'
+                  : 'bg-emerald-950/80 text-emerald-300 border border-emerald-700/50'
+              }`}
+            >
+              <span
+                className={`w-2.5 h-2.5 rounded-full border ${
+                  topWinDetails.favoredSide === 'White'
+                    ? 'bg-white border-stone-400'
+                    : topWinDetails.favoredSide === 'Black'
+                    ? 'bg-stone-950 border-stone-400'
+                    : 'bg-emerald-400 border-emerald-200'
+                }`}
+              />
+              {topWinDetails.statusLabel}
+            </span>
+          </div>
+        </div>
+
+        {/* Side-by-Side White vs Black Win Percentage Labels */}
+        <div className="flex items-center justify-between text-xs font-mono font-bold">
+          <div className="flex items-center gap-1.5 text-stone-100">
+            <span className="w-2.5 h-2.5 rounded-full bg-white border border-stone-400 inline-block" />
+            <span>White Win: {topWinDetails.whiteWin}%</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-stone-300">
+            <span>Black Win: {topWinDetails.blackWin}%</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-stone-900 border border-stone-500 inline-block" />
+          </div>
+        </div>
+
+        {/* Dual Horizontal Win Probability Bar */}
+        <div className="w-full h-3 bg-stone-800 rounded-full overflow-hidden flex border border-stone-700 p-0.5 gap-0.5">
+          <div
+            className="h-full bg-gradient-to-r from-stone-200 to-white rounded-l-full transition-all duration-500"
+            style={{ width: `${topWinDetails.whiteWin}%` }}
+            title={`White Win Rate: ${topWinDetails.whiteWin}%`}
+          />
+          <div
+            className="h-full bg-gradient-to-r from-stone-900 to-stone-950 rounded-r-full transition-all duration-500"
+            style={{ width: `${topWinDetails.blackWin}%` }}
+            title={`Black Win Rate: ${topWinDetails.blackWin}%`}
+          />
+        </div>
+      </div>
+
       {/* Primary Best Move Highlight Card */}
       {topCandidate && (
         <div
@@ -182,7 +283,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
           onMouseLeave={() => onHoverMove && onHoverMove(null)}
           className="bg-gradient-to-br from-emerald-950/40 via-stone-900 to-stone-900/90 border border-emerald-500/40 rounded-2xl p-4 shadow-xl transition-all hover:border-emerald-500/70"
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2.5">
               <span className="bg-gradient-to-r from-emerald-500 to-teal-400 text-stone-950 text-xs font-black px-2.5 py-0.5 rounded-lg flex items-center gap-1 shadow-sm">
                 <Zap className="w-3.5 h-3.5 fill-current" /> BEST MOVE
@@ -195,15 +296,13 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
               </span>
             </div>
 
-            {/* Score & Win Probability Pill */}
+            {/* Score & Explicit Side Win Probability Pill */}
             {(() => {
               const sc = formatScore(topCandidate);
-              const winProb = calculateWinProbability(topCandidate.scoreCp ?? 0, topCandidate.mate ?? null);
-              const favoredWinProb = Math.max(winProb, 100 - winProb);
               return (
                 <div className="flex items-center gap-1.5">
                   <div
-                    className={`px-3 py-1 rounded-lg text-xs font-mono font-black tracking-tight shadow-md ${
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-black tracking-tight shadow-md ${
                       sc.isMate
                         ? 'bg-purple-600 text-white ring-2 ring-purple-400/40'
                         : sc.isWhiteAdvantage
@@ -214,10 +313,27 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                     {sc.text}
                   </div>
                   <div
-                    className="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-stone-950/80 text-emerald-400 border border-emerald-500/30 shadow-sm"
-                    title={`Win probability calculated using standard logistic function: ${favoredWinProb}%`}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border shadow-sm flex items-center gap-1.5 ${
+                      topWinDetails.favoredSide === 'White'
+                        ? 'bg-stone-100 text-stone-950 border-stone-300'
+                        : topWinDetails.favoredSide === 'Black'
+                        ? 'bg-stone-950 text-stone-100 border-stone-600'
+                        : 'bg-stone-950/80 text-emerald-400 border-emerald-500/30'
+                    }`}
+                    title={`White Win: ${topWinDetails.whiteWin}% | Black Win: ${topWinDetails.blackWin}%`}
                   >
-                    {favoredWinProb}% Win
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        topWinDetails.favoredSide === 'White'
+                          ? 'bg-stone-900'
+                          : topWinDetails.favoredSide === 'Black'
+                          ? 'bg-white'
+                          : 'bg-emerald-400'
+                      }`}
+                    />
+                    {topWinDetails.favoredSide === 'Even'
+                      ? 'Even 50%'
+                      : `${topWinDetails.favoredSide} ${topWinDetails.favoredProb}% Win`}
                   </div>
                 </div>
               );
@@ -260,7 +376,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-stone-400 font-bold px-1 uppercase tracking-wider">
           <span>Top Engine Candidates</span>
-          <span>Score</span>
+          <span>Score &amp; Win Rate</span>
         </div>
 
         {engineLines.length === 0 ? (
@@ -270,6 +386,7 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
         ) : (
           engineLines.slice(0, multiPvCount).map((line, idx) => {
             const sc = formatScore(line);
+            const winInfo = getWinRateDetails(line);
             const isTop = idx === 0;
             const isHovered = hoveredMoveUci === line.bestMoveUci;
 
@@ -331,10 +448,18 @@ export const EnginePanel: React.FC<EnginePanelProps> = ({
                     {sc.text}
                   </span>
                   <span
-                    className="text-[10px] text-emerald-400 font-mono font-bold hidden sm:inline"
-                    title="Win probability"
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                      winInfo.favoredSide === 'White'
+                        ? 'bg-stone-200 text-stone-950 border-stone-300'
+                        : winInfo.favoredSide === 'Black'
+                        ? 'bg-stone-950 text-stone-200 border-stone-700'
+                        : 'bg-stone-900 text-emerald-400 border-emerald-800/60'
+                    }`}
+                    title={`White: ${winInfo.whiteWin}% | Black: ${winInfo.blackWin}%`}
                   >
-                    {Math.max(calculateWinProbability(line.scoreCp ?? 0, line.mate ?? null), 100 - calculateWinProbability(line.scoreCp ?? 0, line.mate ?? null))}%
+                    {winInfo.favoredSide === 'Even'
+                      ? '50/50'
+                      : `${winInfo.shortSide} ${winInfo.favoredProb}%`}
                   </span>
                   <span className="text-[11px] text-stone-500 font-mono hidden sm:inline">
                     d{line.depth}

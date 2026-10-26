@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCw, Volume2, VolumeX, Palette, HelpCircle, Bot, Compass, RefreshCw, FolderOpen, FileText } from 'lucide-react';
+import { RotateCw, Volume2, VolumeX, Palette, HelpCircle, Bot, Compass, RefreshCw, FolderOpen, FileText, Pencil, Undo2 } from 'lucide-react';
 import { BoardTheme } from '../types/chess';
 
 interface NavbarProps {
@@ -15,6 +15,10 @@ interface NavbarProps {
   theme: BoardTheme;
   onChangeTheme: (theme: BoardTheme) => void;
   onOpenHelpModal: () => void;
+  isEditMode?: boolean;
+  onToggleEditMode?: () => void;
+  canUndo?: boolean;
+  onUndoMove?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,6 +34,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   onChangeTheme,
   onOpenHelpModal,
+  isEditMode = false,
+  onToggleEditMode,
+  canUndo = false,
+  onUndoMove,
 }) => {
   return (
     <header className="bg-stone-900 border-b border-stone-800 px-4 py-2.5 shadow-md select-none sticky top-0 z-40">
@@ -80,6 +88,35 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Quick Actions */}
         <div className="flex items-center gap-1.5">
+          {/* Quick Undo Wrong Move */}
+          {onUndoMove && (
+            <button
+              onClick={onUndoMove}
+              disabled={!canUndo}
+              title="Undo last move (if you moved the wrong piece)"
+              className="px-2.5 py-1.5 rounded-lg border border-stone-700 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 disabled:pointer-events-none text-stone-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Undo2 className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Undo</span>
+            </button>
+          )}
+
+          {/* Edit Position Toggle */}
+          {onToggleEditMode && (
+            <button
+              onClick={onToggleEditMode}
+              title="Edit board position (freely move, add, or remove any piece)"
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                isEditMode
+                  ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-md shadow-amber-950/40 font-bold'
+                  : 'border-stone-700 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white'
+              }`}
+            >
+              <Pencil className={`w-3.5 h-3.5 ${isEditMode ? 'text-stone-950' : 'text-amber-400'}`} />
+              <span className="hidden sm:inline">{isEditMode ? 'Editing Board' : 'Edit Position'}</span>
+            </button>
+          )}
+
           {/* Import Game / PGN / FEN */}
           <button
             onClick={onOpenImportModal}
@@ -97,7 +134,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="p-2 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-stone-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-xs"
           >
             <FolderOpen className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline font-medium">Position</span>
+            <span className="hidden sm:inline font-medium">Presets</span>
           </button>
 
           {/* Flip Board */}

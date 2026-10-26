@@ -14,7 +14,8 @@ import { identifyOpening } from './utils/openings';
 import { engineService } from './engine/engineService';
 
 import { Navbar } from './components/Navbar';
-import { ChessBoard } from './components/ChessBoard/ChessBoard';
+import { ChessBoard, EditTool } from './components/ChessBoard/ChessBoard';
+import { ChessPiece } from './components/ChessBoard/ChessPieces';
 import { EvaluationBar } from './components/EvaluationBar';
 import { EnginePanel } from './components/EnginePanel';
 import { MoveHistory } from './components/MoveHistory';
@@ -22,7 +23,21 @@ import { PlayEngineControls } from './components/PlayEngineControls';
 import { PositionSetupModal } from './components/PositionSetupModal';
 import { ChesscomSyncModal } from './components/ChesscomSyncModal';
 import { HelpModal } from './components/HelpModal';
-import { Sparkles, Book, AlertCircle, Share2, Check, X, AlertTriangle, RefreshCw, FileText } from 'lucide-react';
+import {
+  Book,
+  AlertCircle,
+  Share2,
+  Check,
+  X,
+  RefreshCw,
+  FileText,
+  Pencil,
+  Undo2,
+  Trash2,
+  Move as MoveIcon,
+} from 'lucide-react';
+
+const EDIT_PIECE_TYPES: PieceSymbol[] = ['k', 'q', 'r', 'b', 'n', 'p'];
 
 export default function App() {
   // Main Chess Game state
@@ -62,8 +77,10 @@ export default function App() {
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // App Modes
+  // App Modes & Edit Position Mode
   const [mode, setMode] = useState<'analysis' | 'play'>('analysis');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editTool, setEditTool] = useState<EditTool>('move');
   const [playerColor, setPlayerColor] = useState<PieceColor>('w');
   const [botDifficulty, setBotDifficulty] = useState(3);
   const [isEngineThinking, setIsEngineThinking] = useState(false);
@@ -72,7 +89,7 @@ export default function App() {
   // Modals & State
   const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
   const [isChesscomModalOpen, setIsChesscomModalOpen] = useState(false);
-  const [chesscomUsername, setChesscomUsername] = useState(() => {
+  const [chesscomUsername] = useState(() => {
     return localStorage.getItem('chesscom_username') || '';
   });
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -122,7 +139,6 @@ export default function App() {
   }, [soundEnabled]);
 
   // Subscribe to engine callbacks and detect significant blunders (> 2 points drop)
-  // Only triggers when engine search depth meets or exceeds blunderMinDepth threshold
   useEffect(() => {
     const unsubEval = engineService.subscribeEvaluation((lines) => {
       setEngineLines(lines);
@@ -138,7 +154,6 @@ export default function App() {
 
         const currentFen = gameRef.current.fen();
 
-        // If position transitioned to a new move/FEN, the last stable position eval becomes the baseline
         if (currentPositionScoreRef.current && currentPositionScoreRef.current.fen !== currentFen) {
           prevPositionScoreRef.current = {
             fen: currentPositionScoreRef.current.fen,
@@ -147,7 +162,6 @@ export default function App() {
           blunderCheckedForFenRef.current = null;
         }
 
-        // Keep updating current position score and depth as engine searches deeper
         currentPositionScoreRef.current = {
           fen: currentFen,
           scoreCp: currentCp,
@@ -158,10 +172,6 @@ export default function App() {
         const reachedRequiredDepth = top.depth >= minDepthRequired;
         const prev = prevPositionScoreRef.current;
 
-        // Evaluate blunder ONLY if:
-        // 1. We have a baseline evaluation for the position before this move
-        // 2. The engine has reached the configured minimum search depth threshold (preventing shallow false positives)
-        // 3. We haven't already evaluated and flagged this position
         if (
           prev &&
           prev.fen !== currentFen &&
@@ -176,17 +186,13 @@ export default function App() {
               lastMoveRec.evalScore = currentCp;
               blunderCheckedForFenRef.current = currentFen;
 
-              // Calculate drop in pawns from the perspective of the player who made the move
               let dropPawns = 0;
               if (lastMoveRec.turn === 'w') {
-                // White moved: a drop is prevCp - currentCp
                 dropPawns = (prev.scoreCp - currentCp) / 100;
               } else {
-                // Black moved: a drop for Black is currentCp - prevCp (White gained advantage)
                 dropPawns = (currentCp - prev.scoreCp) / 100;
               }
 
-              // Significant blunder condition: evaluation drops by more than 2 points (2.0 pawns)
               if (dropPawns >= 2.0) {
                 lastMoveRec.isBlunder = true;
                 lastMoveRec.evalDrop = dropPawns;
@@ -243,9 +249,9 @@ export default function App() {
     .map((m) => m.san);
   const currentOpening = identifyOpening(activeSanHistory);
 
-  // Trigger bot move in 'play' mode if it's the bot's turn
+  // Trigger bot move in 'play' mode if it's the bot's turn (paused while editing board)
   useEffect(() => {
-    if (mode !== 'play') return;
+    if (mode !== 'play' || isEditMode) return;
     if (game.isGameOver()) return;
 
     const currentTurn = game.turn();
@@ -267,7 +273,7 @@ export default function App() {
 
       return () => clearTimeout(timer);
     }
-  }, [mode, fen, playerColor, botDifficulty]);
+  }, [mode, isEditMode, fen, playerColor, botDifficulty]);
 
   // Handle Game over alerts and sounds
   const checkGameOverStatus = useCallback((currentGame: Chess) => {
@@ -277,7 +283,6 @@ export default function App() {
       setGameStatusBanner(msg);
       sound.playCheckmate();
 
-      // Confetti celebration if human won or in analysis
       try {
         confetti({
           particleCount: 80,
@@ -314,10 +319,8 @@ export default function App() {
     historyMoves.forEach((m) => {
       if (m.captured) {
         if (m.turn === 'w') {
-          // White captured black piece
           whiteCaps.push(m.captured);
         } else {
-          // Black captured white piece
           blackCaps.push(m.captured);
         }
       }
@@ -327,9 +330,20 @@ export default function App() {
     setCapturedBlack(blackCaps);
   };
 
+  // Clone a Chess instance safely even with edited FENs
+  const cloneChessInstance = (fenStr: string): Chess => {
+    const next = new Chess();
+    try {
+      next.load(fenStr);
+    } catch {
+      next.load(fenStr, { skipValidation: true });
+    }
+    return next;
+  };
+
   // Execute a move on the board
   const handleMakeMove = (from: Square, to: Square, promotion: string = 'q'): boolean => {
-    const newGame = new Chess(game.fen());
+    const newGame = cloneChessInstance(game.fen());
 
     try {
       const moveRes = newGame.move({
@@ -343,7 +357,6 @@ export default function App() {
         return false;
       }
 
-      // Play proper sound
       if (moveRes.captured) {
         sound.playCapture();
       } else if (moveRes.san === 'O-O' || moveRes.san === 'O-O-O') {
@@ -352,7 +365,6 @@ export default function App() {
         sound.playMove();
       }
 
-      // Record move
       const newRecord: MoveRecord = {
         san: moveRes.san,
         uci: `${from}${to}${moveRes.promotion || ''}`,
@@ -366,7 +378,6 @@ export default function App() {
         moveNumber: Math.floor(moveHistory.length / 2) + 1,
       };
 
-      // Truncate future branch if moved from an earlier point in history
       const newHistory = [...moveHistory.slice(0, currentMoveIndex + 1), newRecord];
       const newIdx = newHistory.length - 1;
 
@@ -385,11 +396,170 @@ export default function App() {
     }
   };
 
+  // Undo the most recent move immediately if user moved the wrong piece
+  const handleUndoWrongMove = () => {
+    if (currentMoveIndex < 0 || moveHistory.length === 0) return;
+
+    const targetMove = moveHistory[currentMoveIndex];
+    const restoredGame = cloneChessInstance(targetMove.fenBefore);
+    const updatedHistory = moveHistory.slice(0, currentMoveIndex);
+    const newIdx = updatedHistory.length - 1;
+
+    setGame(restoredGame);
+    setFen(restoredGame.fen());
+    setMoveHistory(updatedHistory);
+    setCurrentMoveIndex(newIdx);
+    setLastMove(
+      newIdx >= 0
+        ? { from: updatedHistory[newIdx].from, to: updatedHistory[newIdx].to }
+        : null
+    );
+    recalculateCaptures(updatedHistory);
+    setBlunderAlert(null);
+    prevPositionScoreRef.current = null;
+    currentPositionScoreRef.current = null;
+    blunderCheckedForFenRef.current = null;
+    checkGameOverStatus(restoredGame);
+    sound.playMove();
+  };
+
+  // Apply an edited Chess instance to board state
+  const applyEditedGame = (editedGame: Chess, statusMsg?: string) => {
+    // Ensure en-passant square is cleared after manual board edits so FEN is always valid
+    const parts = editedGame.fen().split(' ');
+    parts[3] = '-';
+    const cleanFen = parts.join(' ');
+
+    const finalGame = cloneChessInstance(cleanFen);
+    setGame(finalGame);
+    setFen(finalGame.fen());
+    setLastMove(null);
+    setBlunderAlert(null);
+    prevPositionScoreRef.current = null;
+    currentPositionScoreRef.current = null;
+    blunderCheckedForFenRef.current = null;
+
+    if (statusMsg) {
+      setGameStatusBanner(statusMsg);
+    } else {
+      checkGameOverStatus(finalGame);
+    }
+    sound.playMove();
+  };
+
+  // Edit Mode: Move ANY piece from `from` to `to` freely (without turn or legal move restrictions)
+  const handleEditMovePiece = (from: Square, to: Square) => {
+    if (from === to) return;
+    const edited = cloneChessInstance(game.fen());
+    const movingPiece = edited.get(from as ChessSquare);
+    if (!movingPiece) return;
+
+    const targetPiece = edited.get(to as ChessSquare);
+
+    // Prevent overwriting a King: if destination has a King, swap the two pieces
+    if (targetPiece && targetPiece.type === 'k') {
+      edited.remove(from as ChessSquare);
+      edited.remove(to as ChessSquare);
+      edited.put(movingPiece, to as ChessSquare);
+      edited.put(targetPiece, from as ChessSquare);
+      applyEditedGame(edited);
+      return;
+    }
+
+    edited.remove(from as ChessSquare);
+    // Auto-promote pawns moved to Rank 1 or Rank 8 so position stays legal
+    const isRank1Or8 = to.endsWith('8') || to.endsWith('1');
+    const finalType: PieceSymbol =
+      movingPiece.type === 'p' && isRank1Or8 ? 'q' : movingPiece.type;
+
+    edited.put({ color: movingPiece.color, type: finalType }, to as ChessSquare);
+    applyEditedGame(edited);
+  };
+
+  // Edit Mode: Place or delete a piece on `square`
+  const handleEditSetSquare = (
+    square: Square,
+    piece: { color: PieceColor; type: PieceSymbol } | null
+  ) => {
+    const edited = cloneChessInstance(game.fen());
+    const existing = edited.get(square as ChessSquare);
+
+    // Deleting a piece
+    if (!piece) {
+      if (!existing) return;
+      if (existing.type === 'k') {
+        setGameStatusBanner('Both Kings must remain on the board. Drag the King to move it.');
+        sound.playIllegal();
+        return;
+      }
+      edited.remove(square as ChessSquare);
+      applyEditedGame(edited);
+      return;
+    }
+
+    // Prevent overwriting opposite King without relocating it
+    if (existing && existing.type === 'k' && (piece.type !== 'k' || piece.color !== existing.color)) {
+      setGameStatusBanner('Cannot overwrite a King. Move the King to another square first.');
+      sound.playIllegal();
+      return;
+    }
+
+    // If placing a King, remove the previous King of the same color so there is only 1 King per side
+    if (piece.type === 'k') {
+      const board = edited.board();
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const cell = board[r][f];
+          if (cell && cell.type === 'k' && cell.color === piece.color) {
+            const sq = `${String.fromCharCode(97 + f)}${8 - r}` as ChessSquare;
+            edited.remove(sq);
+          }
+        }
+      }
+    }
+
+    // Prevent placing pawns on Rank 1 or Rank 8
+    const isRank1Or8 = square.endsWith('8') || square.endsWith('1');
+    const finalType: PieceSymbol = piece.type === 'p' && isRank1Or8 ? 'q' : piece.type;
+
+    edited.put({ color: piece.color, type: finalType }, square as ChessSquare);
+    applyEditedGame(edited);
+  };
+
+  // Edit Mode: Change whose turn it is to move ('w' or 'b')
+  const handleEditSetTurn = (newTurn: PieceColor) => {
+    const parts = game.fen().split(' ');
+    if (parts[1] === newTurn) return;
+    parts[1] = newTurn;
+    parts[3] = '-'; // Clear en-passant square
+    const updatedFen = parts.join(' ');
+    const edited = cloneChessInstance(updatedFen);
+    setGame(edited);
+    setFen(edited.fen());
+    setBlunderAlert(null);
+    prevPositionScoreRef.current = null;
+    currentPositionScoreRef.current = null;
+    blunderCheckedForFenRef.current = null;
+    sound.playMove();
+  };
+
+  // Edit Mode: Clear board down to only White and Black Kings
+  const handleClearToKings = () => {
+    const currentTurn = game.turn();
+    const kingsOnlyFen = `4k3/8/8/8/8/8/8/4K3 ${currentTurn} - - 0 1`;
+    const edited = cloneChessInstance(kingsOnlyFen);
+    setMoveHistory([]);
+    setCurrentMoveIndex(-1);
+    setCapturedWhite([]);
+    setCapturedBlack([]);
+    applyEditedGame(edited, 'Board cleared to Kings. Place or move pieces freely.');
+  };
+
   // Jump to specific move in history
   const handleSelectHistoryMove = (index: number) => {
     if (index < 0 || index >= moveHistory.length) return;
     const targetMove = moveHistory[index];
-    const targetGame = new Chess(targetMove.fenAfter);
+    const targetGame = cloneChessInstance(targetMove.fenAfter);
 
     setGame(targetGame);
     setFen(targetGame.fen());
@@ -401,7 +571,7 @@ export default function App() {
   const handleFirstMove = () => {
     if (moveHistory.length === 0) return;
     const firstFen = moveHistory[0].fenBefore;
-    const firstGame = new Chess(firstFen);
+    const firstGame = cloneChessInstance(firstFen);
     setGame(firstGame);
     setFen(firstGame.fen());
     setCurrentMoveIndex(-1);
@@ -493,7 +663,6 @@ export default function App() {
         try {
           replayGame.move(m);
         } catch {
-          // Break gracefully if any downstream move fails replay
           break;
         }
         records.push({
@@ -565,7 +734,6 @@ export default function App() {
       handleResetGame();
       return;
     }
-    // In play vs engine, take back 2 moves (both engine and player's move)
     const targetIdx = Math.max(-1, currentMoveIndex - 2);
     if (targetIdx === -1) {
       handleFirstMove();
@@ -590,6 +758,16 @@ export default function App() {
     setTimeout(() => setIsCopiedShare(false), 2000);
   };
 
+  const isToolActive = (tool: EditTool) => {
+    if (typeof tool === 'string' && typeof editTool === 'string') {
+      return tool === editTool;
+    }
+    if (typeof tool === 'object' && typeof editTool === 'object' && tool && editTool) {
+      return tool.color === editTool.color && tool.type === editTool.type;
+    }
+    return false;
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col font-sans">
       {/* Top Navbar */}
@@ -598,6 +776,7 @@ export default function App() {
         onSelectMode={(m) => {
           setMode(m);
           if (m === 'play') {
+            setIsEditMode(false);
             setOrientation(playerColor === 'w' ? 'white' : 'black');
           }
         }}
@@ -611,11 +790,18 @@ export default function App() {
         theme={theme}
         onChangeTheme={setTheme}
         onOpenHelpModal={() => setIsHelpModalOpen(true)}
+        isEditMode={isEditMode}
+        onToggleEditMode={() => {
+          setIsEditMode((prev) => !prev);
+          setEditTool('move');
+        }}
+        canUndo={currentMoveIndex >= 0 && moveHistory.length > 0}
+        onUndoMove={handleUndoWrongMove}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 md:p-6 flex flex-col gap-4">
-        {/* Imported Match Details (shown only if a game was imported) */}
+        {/* Imported Match Details */}
         {activeMatchPlayers && (
           <div className="bg-stone-900/90 border border-stone-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
             <div className="flex items-center gap-2 text-stone-300">
@@ -642,8 +828,9 @@ export default function App() {
             </div>
           </div>
         )}
+
         {/* Active Opening Banner */}
-        {currentOpening && (
+        {currentOpening && !isEditMode && (
           <div className="bg-stone-900/90 border border-emerald-500/30 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2.5 overflow-hidden">
               <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
@@ -689,9 +876,17 @@ export default function App() {
 
         {/* Game Alert Banner */}
         {gameStatusBanner && (
-          <div className="bg-gradient-to-r from-amber-950/80 to-stone-900 border border-amber-500/40 rounded-xl px-4 py-2.5 flex items-center gap-3 text-amber-200 text-xs sm:text-sm font-semibold shadow-md animate-in fade-in">
-            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
-            <span>{gameStatusBanner}</span>
+          <div className="bg-gradient-to-r from-amber-950/80 to-stone-900 border border-amber-500/40 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-amber-200 text-xs sm:text-sm font-semibold shadow-md animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>{gameStatusBanner}</span>
+            </div>
+            <button
+              onClick={() => setGameStatusBanner(null)}
+              className="p-1 text-amber-400 hover:text-white rounded-lg cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 
@@ -719,13 +914,25 @@ export default function App() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => setBlunderAlert(null)}
-              className="p-1.5 text-red-400 hover:text-white hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
-              title="Dismiss blunder alert"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              {currentMoveIndex >= 0 && (
+                <button
+                  onClick={handleUndoWrongMove}
+                  className="px-2.5 py-1 bg-red-800 hover:bg-red-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                  title="Take back this move"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  <span>Undo Move</span>
+                </button>
+              )}
+              <button
+                onClick={() => setBlunderAlert(null)}
+                className="p-1.5 text-red-400 hover:text-white hover:bg-red-900/50 rounded-lg transition-colors cursor-pointer"
+                title="Dismiss blunder alert"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -740,8 +947,164 @@ export default function App() {
               isCalculating={engineStatus.isCalculating}
             />
 
-            {/* Interactive Chess Board with Arrows & Controls */}
+            {/* Interactive Chess Board with Edit Toolbar & Controls */}
             <div className="flex-1 max-w-[620px] flex flex-col gap-1.5">
+              {/* Interactive Board Position Editor Toolbar (Shown when Edit Position is active) */}
+              {isEditMode && (
+                <div className="bg-stone-950/95 border border-amber-500/60 rounded-xl p-2.5 flex flex-col gap-2.5 shadow-lg animate-in fade-in">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-amber-500 text-stone-950 font-black text-[10px] uppercase tracking-wider flex items-center gap-1">
+                        <Pencil className="w-3 h-3" /> Edit Position Mode
+                      </span>
+                      <span className="text-[11px] text-stone-300">
+                        Drag or click any piece to move it anywhere, or place/delete pieces below.
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setIsEditMode(false)}
+                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 cursor-pointer shadow-sm"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Done Editing</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tool Selection & Piece Palettes */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {/* Free Move & Delete Tools */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setEditTool('move')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border cursor-pointer transition-all ${
+                          isToolActive('move')
+                            ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
+                            : 'bg-stone-900 text-stone-300 border-stone-700 hover:bg-stone-800'
+                        }`}
+                        title="Freely drag or click any White/Black piece to move it to any square"
+                      >
+                        <MoveIcon className="w-3.5 h-3.5" />
+                        <span>Move Piece</span>
+                      </button>
+
+                      <button
+                        onClick={() => setEditTool('trash')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border cursor-pointer transition-all ${
+                          isToolActive('trash')
+                            ? 'bg-rose-600 text-white border-rose-400 shadow-sm'
+                            : 'bg-stone-900 text-stone-300 border-stone-700 hover:bg-stone-800'
+                        }`}
+                        title="Click any square on the board to remove its piece (or right-click)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+
+                    {/* Side to Move Selector */}
+                    <div className="flex items-center gap-1 bg-stone-900 p-1 rounded-lg border border-stone-800 text-[11px]">
+                      <span className="text-stone-400 font-semibold px-1">Turn:</span>
+                      <button
+                        onClick={() => handleEditSetTurn('w')}
+                        className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                          game.turn() === 'w'
+                            ? 'bg-white text-stone-950 shadow-xs'
+                            : 'text-stone-400 hover:text-white'
+                        }`}
+                      >
+                        White
+                      </button>
+                      <button
+                        onClick={() => handleEditSetTurn('b')}
+                        className={`px-2 py-0.5 rounded font-bold cursor-pointer transition-colors ${
+                          game.turn() === 'b'
+                            ? 'bg-stone-700 text-white shadow-xs'
+                            : 'text-stone-400 hover:text-white'
+                        }`}
+                      >
+                        Black
+                      </button>
+                    </div>
+
+                    {/* Quick Board Presets */}
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <button
+                        onClick={handleClearToKings}
+                        className="px-2 py-1 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-700 cursor-pointer font-semibold"
+                        title="Remove all pieces except the two Kings"
+                      >
+                        Kings Only
+                      </button>
+                      <button
+                        onClick={handleResetGame}
+                        className="px-2 py-1 rounded-lg bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-700 cursor-pointer font-semibold"
+                        title="Reset to standard starting position"
+                      >
+                        Start Pos
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* White & Black Piece Placement Palette */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {/* White Pieces */}
+                    <div className="flex items-center justify-between bg-stone-900/90 px-2.5 py-1.5 rounded-lg border border-stone-800">
+                      <span className="text-[10px] font-bold uppercase text-stone-400 mr-1">
+                        Add White:
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {EDIT_PIECE_TYPES.map((pt) => {
+                          const active = isToolActive({ color: 'w', type: pt });
+                          return (
+                            <button
+                              key={`w-${pt}`}
+                              onClick={() => setEditTool({ color: 'w', type: pt })}
+                              className={`w-7 h-7 p-0.5 rounded-md border transition-all cursor-pointer ${
+                                active
+                                  ? 'bg-amber-500/30 border-amber-400 scale-110'
+                                  : 'bg-stone-800/80 border-stone-700 hover:border-stone-500'
+                              }`}
+                              title={`Place White ${pt.toUpperCase()}`}
+                            >
+                              <ChessPiece color="w" type={pt} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Black Pieces */}
+                    <div className="flex items-center justify-between bg-stone-900/90 px-2.5 py-1.5 rounded-lg border border-stone-800">
+                      <span className="text-[10px] font-bold uppercase text-stone-400 mr-1">
+                        Add Black:
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {EDIT_PIECE_TYPES.map((pt) => {
+                          const active = isToolActive({ color: 'b', type: pt });
+                          return (
+                            <button
+                              key={`b-${pt}`}
+                              onClick={() => setEditTool({ color: 'b', type: pt })}
+                              className={`w-7 h-7 p-0.5 rounded-md border transition-all cursor-pointer ${
+                                active
+                                  ? 'bg-amber-500/30 border-amber-400 scale-110'
+                                  : 'bg-stone-800/80 border-stone-700 hover:border-stone-500'
+                              }`}
+                              title={`Place Black ${pt.toUpperCase()}`}
+                            >
+                              <ChessPiece color="b" type={pt} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Top Player Bar (Opponent if viewing as White, User if viewing as Black) */}
               <div className="flex items-center justify-between px-2.5 py-1.5 bg-stone-950/70 rounded-xl text-xs border border-stone-800">
                 <div className="flex items-center gap-2">
@@ -789,10 +1152,14 @@ export default function App() {
                 onMove={handleMakeMove}
                 disabled={mode === 'play' && isEngineThinking}
                 hoveredMoveUci={hoveredMoveUci}
+                editMode={isEditMode}
+                editTool={editTool}
+                onEditMovePiece={handleEditMovePiece}
+                onEditSetSquare={handleEditSetSquare}
               />
 
-              {/* Bottom Player Bar */}
-              <div className="flex items-center justify-between px-2.5 py-1.5 bg-stone-950/70 rounded-xl text-xs border border-stone-800">
+              {/* Bottom Player Bar with Quick Undo & Edit Position Controls */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 bg-stone-950/70 rounded-xl text-xs border border-stone-800">
                 <div className="flex items-center gap-2">
                   <div
                     className={`w-3 h-3 rounded-full border shadow-sm ${
@@ -801,7 +1168,7 @@ export default function App() {
                         : 'bg-stone-900 border-stone-600'
                     }`}
                   />
-                  <span className="font-bold text-white text-xs truncate max-w-[180px]">
+                  <span className="font-bold text-white text-xs truncate max-w-[160px]">
                     {orientation === 'white'
                       ? activeMatchPlayers?.white || 'White'
                       : activeMatchPlayers?.black || 'Black'}
@@ -815,15 +1182,44 @@ export default function App() {
                         : activeMatchPlayers?.blackRating}
                     </span>
                   ) : null}
-                </div>
-
-                <div className="flex items-center gap-2 text-[11px]">
                   {game.turn() === (orientation === 'white' ? 'w' : 'b') && (
                     <span className="flex items-center gap-1 text-emerald-400 font-semibold text-[10px] bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-full">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                       To Move
                     </span>
                   )}
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px]">
+                  {/* Quick Undo Wrong Move Button */}
+                  <button
+                    onClick={handleUndoWrongMove}
+                    disabled={currentMoveIndex < 0 || moveHistory.length === 0}
+                    className="p-1 px-2 text-stone-200 hover:text-white rounded-lg bg-stone-900 hover:bg-stone-800 disabled:opacity-40 disabled:pointer-events-none border border-stone-700 transition-colors cursor-pointer text-[10px] flex items-center gap-1 font-semibold"
+                    title="Undo last move (if you moved the wrong piece)"
+                  >
+                    <Undo2 className="w-3 h-3 text-amber-400" />
+                    <span>Undo Move</span>
+                  </button>
+
+                  {/* Edit Position Toggle Button */}
+                  <button
+                    onClick={() => {
+                      setIsEditMode((prev) => !prev);
+                      setEditTool('move');
+                    }}
+                    className={`p-1 px-2 rounded-lg border transition-colors cursor-pointer text-[10px] flex items-center gap-1 font-semibold ${
+                      isEditMode
+                        ? 'bg-amber-500 text-stone-950 border-amber-400 font-bold'
+                        : 'text-stone-200 hover:text-white bg-stone-900 hover:bg-stone-800 border-stone-700'
+                    }`}
+                    title="Freely move, add, or delete any piece on the board"
+                  >
+                    <Pencil className={`w-3 h-3 ${isEditMode ? 'text-stone-950' : 'text-amber-400'}`} />
+                    <span>{isEditMode ? 'Done Editing' : 'Edit Position'}</span>
+                  </button>
+
+                  {/* Flip Board Button */}
                   <button
                     onClick={handleFlipBoard}
                     className="p-1 px-1.5 text-stone-300 hover:text-white rounded-lg bg-stone-900 hover:bg-stone-800 border border-stone-700 transition-colors cursor-pointer text-[10px] flex items-center gap-1 font-semibold"

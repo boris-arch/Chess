@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Chess, Square as ChessSquare, Move } from 'chess.js';
+import { Chess, Square as ChessSquare } from 'chess.js';
 import { ChessPiece } from './ChessPieces';
-import { BoardTheme, ChessEngineMoveLine, Square } from '../../types/chess';
+import { BoardTheme, ChessEngineMoveLine, PieceColor, PieceSymbol, Square } from '../../types/chess';
+
+export type EditTool = 'move' | 'trash' | { color: PieceColor; type: PieceSymbol };
 
 interface ChessBoardProps {
   game: Chess;
@@ -13,6 +15,10 @@ interface ChessBoardProps {
   onMove: (from: Square, to: Square, promotion?: string) => boolean;
   disabled?: boolean;
   hoveredMoveUci?: string | null;
+  editMode?: boolean;
+  editTool?: EditTool;
+  onEditMovePiece?: (from: Square, to: Square) => void;
+  onEditSetSquare?: (square: Square, piece: { color: PieceColor; type: PieceSymbol } | null) => void;
 }
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -69,6 +75,10 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   onMove,
   disabled = false,
   hoveredMoveUci = null,
+  editMode = false,
+  editTool = 'move',
+  onEditMovePiece,
+  onEditSetSquare,
 }) => {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
@@ -94,19 +104,26 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
     wasSelectedBeforeDown: boolean;
   } | null>(null);
 
+  // Clear selection when toggling edit mode or changing tool
+  useEffect(() => {
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+  }, [editMode, editTool]);
+
   // Board orientation
   const displayFiles = orientation === 'white' ? FILES : [...FILES].reverse();
   const displayRanks = orientation === 'white' ? RANKS : [...RANKS].reverse();
 
-  // Legal moves for selected square (memoized directly from current game)
-  const legalMovesForSelected = selectedSquare
-    ? game.moves({ square: selectedSquare as ChessSquare, verbose: true })
-    : [];
+  // Legal moves for selected square (only in normal mode)
+  const legalMovesForSelected =
+    !editMode && selectedSquare
+      ? game.moves({ square: selectedSquare as ChessSquare, verbose: true })
+      : [];
   const legalTargetSquares = new Set(legalMovesForSelected.map((m) => m.to));
 
   // Determine king in check square
   let checkKingSquare: Square | null = null;
-  if (game.inCheck()) {
+  if (!editMode && game.inCheck()) {
     const turnColor = game.turn();
     const board = game.board();
     for (let r = 0; r < 8; r++) {
@@ -146,6 +163,14 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   // Attempt move execution
   const executeMove = useCallback(
     (from: Square, to: Square) => {
+      if (editMode) {
+        if (from !== to && onEditMovePiece) {
+          onEditMovePiece(from, to);
+        }
+        setSelectedSquare(null);
+        return;
+      }
+
       const piece = game.get(from as ChessSquare);
       const isPawn = piece && piece.type === 'p';
       const isWhitePromo = isPawn && piece.color === 'w' && to.endsWith('8');
@@ -161,18 +186,82 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
         setSelectedSquare(null);
       }
     },
-    [game, onMove]
+    [editMode, onEditMovePiece, game, onMove]
   );
 
-  // Unified Pointer Down handler (manages both click-to-move and drag start)
+  // Unified Pointer Down handler (manages both click-to-move, drag start, and edit mode tools)
   const handlePointerDown = (e: React.PointerEvent, square: Square) => {
-    if (disabled || pendingPromotion || e.button !== 0) return;
+    if (disabled || pendingPromotion) return;
+
+    // Right click in edit mode deletes piece on square
+    if (editMode && e.button === 2) {
+      e.preventDefault();
+      onEditSetSquare?.(square, null);
+      setSelectedSquare(null);
+      return;
+    }
+
+    if (e.button !== 0) return;
     e.preventDefault();
 
     const clickedPiece = game.get(square as ChessSquare);
     const rect = boardRef.current?.getBoundingClientRect();
     const sqSize = rect ? rect.width / 8 : 64;
 
+    // EDIT POSITION MODE HANDLING
+    if (editMode) {
+      // Tool 1: Trash / Delete piece
+      if (editTool === 'trash') {
+        onEditSetSquare?.(square, null);
+        setSelectedSquare(null);
+        return;
+      }
+
+      // Tool 2: Place specific piece from palette
+      if (typeof editTool === 'object' && editTool !== null) {
+        if (
+          clickedPiece &&
+          clickedPiece.color === editTool.color &&
+          clickedPiece.type === editTool.type
+        ) {
+          // Clicking same piece again removes it (unless king, handled by parent)
+          onEditSetSquare?.(square, null);
+        } else {
+          onEditSetSquare?.(square, { color: editTool.color, type: editTool.type });
+        }
+        setSelectedSquare(null);
+        return;
+      }
+
+      // Tool 3: Free Move ('move') - move ANY piece (White or Black) to ANY square
+      if (selectedSquare && selectedSquare !== square) {
+        onEditMovePiece?.(selectedSquare, square);
+        setSelectedSquare(null);
+        return;
+      }
+
+      if (clickedPiece) {
+        const wasSelected = selectedSquare === square;
+        dragInfoRef.current = {
+          startSquare: square,
+          startX: e.clientX,
+          startY: e.clientY,
+          hasDragged: false,
+          pieceColor: clickedPiece.color,
+          pieceType: clickedPiece.type,
+          squareSize: sqSize,
+          wasSelectedBeforeDown: wasSelected,
+        };
+        setDragSquareSize(sqSize);
+        setDragCursor({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      setSelectedSquare(null);
+      return;
+    }
+
+    // NORMAL PLAY / ANALYSIS MODE HANDLING
     // Case 1: A piece was already selected, and player clicked a destination
     if (selectedSquare && selectedSquare !== square) {
       const moves = game.moves({ square: selectedSquare as ChessSquare, verbose: true });
@@ -269,28 +358,26 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
       setHoveredDropSquare(null);
 
       if (dragInfo.hasDragged) {
-        // Drop occurred after a drag
         const dropSq = getSquareFromCoords(e.clientX, e.clientY);
         if (dropSq && dropSq !== dragInfo.startSquare) {
+          if (editMode) {
+            executeMove(dragInfo.startSquare, dropSq);
+            return;
+          }
           const moves = game.moves({ square: dragInfo.startSquare as ChessSquare, verbose: true });
           const isLegal = moves.some((m) => m.to === dropSq);
           if (isLegal) {
             executeMove(dragInfo.startSquare, dropSq);
           } else {
-            // Keep the piece selected if dropped on an invalid square
             setSelectedSquare(dragInfo.startSquare);
           }
         } else {
-          // Dropped on the same square: keep selected
           setSelectedSquare(dragInfo.startSquare);
         }
       } else {
-        // Pure click/tap without dragging
         if (dragInfo.wasSelectedBeforeDown) {
-          // Re-clicked selected piece: deselect
           setSelectedSquare(null);
         } else {
-          // Clicked friendly piece: select it
           setSelectedSquare(dragInfo.startSquare);
         }
       }
@@ -302,7 +389,7 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
       window.removeEventListener('pointermove', handleGlobalPointerMove);
       window.removeEventListener('pointerup', handleGlobalPointerUp);
     };
-  }, [game, executeMove, getSquareFromCoords]);
+  }, [game, editMode, executeMove, getSquareFromCoords]);
 
   const handlePromotionSelect = (promoPiece: 'q' | 'r' | 'b' | 'n') => {
     if (!pendingPromotion) return;
@@ -329,7 +416,13 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   ];
 
   return (
-    <div className="relative select-none w-full max-w-[620px] mx-auto aspect-square p-2 bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 rounded-2xl shadow-2xl border border-stone-800">
+    <div
+      className={`relative select-none w-full max-w-[620px] mx-auto aspect-square p-2 bg-gradient-to-br from-stone-900 via-stone-900 to-stone-950 rounded-2xl shadow-2xl border transition-colors ${
+        editMode
+          ? 'border-amber-500/80 ring-2 ring-amber-500/30'
+          : 'border-stone-800'
+      }`}
+    >
       {/* Board container */}
       <div
         ref={boardRef}
@@ -346,14 +439,15 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
 
             const isSelected = selectedSquare === square;
             const isLegalTarget = legalTargetSquares.has(square);
-            const isHoveredTarget = hoveredDropSquare === square && isLegalTarget;
-            const isLastMoveFrom = lastMove?.from === square;
-            const isLastMoveTo = lastMove?.to === square;
+            const isHoveredTarget =
+              hoveredDropSquare === square && (editMode ? draggingSquare !== square : isLegalTarget);
+            const isLastMoveFrom = !editMode && lastMove?.from === square;
+            const isLastMoveTo = !editMode && lastMove?.to === square;
             const isInCheck = checkKingSquare === square;
             const isCurrentlyDraggingThis = draggingSquare === square;
 
-            const isHoveredLineFrom = hoveredMoveUci?.startsWith(square);
-            const isHoveredLineTo = hoveredMoveUci?.endsWith(square);
+            const isHoveredLineFrom = !editMode && hoveredMoveUci?.startsWith(square);
+            const isHoveredLineTo = !editMode && hoveredMoveUci?.endsWith(square);
 
             const showRankCoord = fileIdx === 0;
             const showFileCoord = rankIdx === 7;
@@ -443,7 +537,7 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
         )}
 
         {/* Engine Recommendation Arrows Overlay */}
-        {showArrows && (
+        {showArrows && !editMode && (
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none z-30"
             viewBox="0 0 800 800"
