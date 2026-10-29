@@ -7,7 +7,8 @@ interface PieceProps {
   className?: string;
 }
 
-export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-full h-full' }) => {
+// ⚡ Bolt: Memoize the ChessPiece to prevent 32+ re-renders per board update, improving drag and drop performance
+export const ChessPiece: React.FC<PieceProps> = React.memo(({ color, type, className = 'w-full h-full' }) => {
   const isWhite = color === 'w';
 
   switch (type) {
@@ -303,4 +304,4 @@ export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-f
     default:
       return null;
   }
-};
+});
