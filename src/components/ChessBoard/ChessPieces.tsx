@@ -7,7 +7,8 @@ interface PieceProps {
   className?: string;
 }
 
-export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-full h-full' }) => {
+// ⚡ Bolt: Memoized ChessPiece to prevent unnecessary re-renders of all 32 pieces during engine updates
+export const ChessPiece: React.FC<PieceProps> = React.memo(({ color, type, className = 'w-full h-full' }) => {
   const isWhite = color === 'w';
 
   switch (type) {
@@ -303,4 +304,7 @@ export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-f
     default:
       return null;
   }
-};
+});
+
+// ⚡ Bolt: Provide a display name for React DevTools after memoization
+ChessPiece.displayName = 'ChessPiece';
