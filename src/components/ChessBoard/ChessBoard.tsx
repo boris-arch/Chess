@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { ChessPiece } from './ChessPieces';
 import { BoardTheme, ChessEngineMoveLine, PieceColor, PieceSymbol, Square } from '../../types/chess';
@@ -114,31 +114,35 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   const displayFiles = orientation === 'white' ? FILES : [...FILES].reverse();
   const displayRanks = orientation === 'white' ? RANKS : [...RANKS].reverse();
 
-  // Legal moves for selected square (only in normal mode)
-  const legalMovesForSelected =
-    !editMode && selectedSquare
+  // ⚡ Bolt: Memoize legal moves to prevent expensive chess.js calls on every render (e.g. during dragging)
+  const { legalMovesForSelected, legalTargetSquares } = useMemo(() => {
+    const moves = !editMode && selectedSquare
       ? game.moves({ square: selectedSquare as ChessSquare, verbose: true })
       : [];
-  const legalTargetSquares = new Set(legalMovesForSelected.map((m) => m.to));
+    return {
+      legalMovesForSelected: moves,
+      legalTargetSquares: new Set(moves.map((m) => m.to))
+    };
+  }, [editMode, selectedSquare, game]);
 
-  // Determine king in check square
-  let checkKingSquare: Square | null = null;
-  if (!editMode && game.inCheck()) {
-    const turnColor = game.turn();
-    const board = game.board();
-    for (let r = 0; r < 8; r++) {
-      for (let f = 0; f < 8; f++) {
-        const piece = board[r][f];
-        if (piece && piece.type === 'k' && piece.color === turnColor) {
-          const fileChar = String.fromCharCode(97 + f);
-          const rankChar = String(8 - r);
-          checkKingSquare = `${fileChar}${rankChar}` as Square;
-          break;
+  // ⚡ Bolt: Memoize king check calculation to prevent scanning the entire 8x8 board on every render
+  const checkKingSquare = useMemo(() => {
+    if (!editMode && game.inCheck()) {
+      const turnColor = game.turn();
+      const board = game.board();
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const piece = board[r][f];
+          if (piece && piece.type === 'k' && piece.color === turnColor) {
+            const fileChar = String.fromCharCode(97 + f);
+            const rankChar = String(8 - r);
+            return `${fileChar}${rankChar}` as Square;
+          }
         }
       }
-      if (checkKingSquare) break;
     }
-  }
+    return null;
+  }, [editMode, game]);
 
   // Convert client coordinates (x, y) to chess square with edge tolerance
   const getSquareFromCoords = useCallback(

@@ -1,0 +1,4 @@
+
+## 2024-05-18 - The Cost of Missing Memoization in Drag-and-Drop
+**Learning:** React components that handle high-frequency events (like dragging a piece, which updates a `dragCursor` or `hoveredDropSquare` state) must aggressively memoize expensive operations. In this codebase, the lack of `React.memo` on complex SVGs (`ChessPiece`) and missing `useMemo` for synchronous `chess.js` library functions (`game.moves()` and board scanning for check) caused a severe rendering bottleneck during drag operations, as they were needlessly re-evaluated on every hover change.
+**Action:** Always verify if expensive UI components or complex algorithmic functions (like those from a chess engine/library) are re-evaluating during high-frequency pointer/drag events. Wrap expensive rendering in `React.memo` and expensive calculations in `useMemo`.
