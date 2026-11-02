@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Chess, Square as ChessSquare, PieceSymbol } from 'chess.js';
 import confetti from 'canvas-confetti';
 import {
@@ -243,11 +243,13 @@ export default function App() {
     runAnalysis(fen);
   }, [fen, runAnalysis]);
 
-  // Detect opening based on SAN history
-  const activeSanHistory = moveHistory
-    .slice(0, currentMoveIndex + 1)
-    .map((m) => m.san);
-  const currentOpening = identifyOpening(activeSanHistory);
+  // ⚡ Bolt: Memoize opening detection to avoid iterating and string-matching the entire DB on every render
+  const currentOpening = useMemo(() => {
+    const activeSanHistory = moveHistory
+      .slice(0, currentMoveIndex + 1)
+      .map((m) => m.san);
+    return identifyOpening(activeSanHistory);
+  }, [moveHistory, currentMoveIndex]);
 
   // Trigger bot move in 'play' mode if it's the bot's turn (paused while editing board)
   useEffect(() => {

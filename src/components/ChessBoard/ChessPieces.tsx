@@ -7,7 +7,12 @@ interface PieceProps {
   className?: string;
 }
 
-export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-full h-full' }) => {
+// ⚡ Bolt: Memoize the ChessPiece component.
+// Why: There are 64 squares and up to 32 pieces on the board.
+// During dragging or hovering, frequent state updates in the parent component
+// would cause all these complex SVG pieces to unnecessarily re-render.
+// React.memo prevents re-rendering unless the piece color, type, or className changes.
+export const ChessPiece: React.FC<PieceProps> = React.memo(({ color, type, className = 'w-full h-full' }) => {
   const isWhite = color === 'w';
 
   switch (type) {
@@ -303,4 +308,4 @@ export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-f
     default:
       return null;
   }
-};
+});
