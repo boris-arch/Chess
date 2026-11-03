@@ -7,7 +7,11 @@ interface PieceProps {
   className?: string;
 }
 
-export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-full h-full' }) => {
+// ⚡ Bolt Performance Optimization:
+// Wrapped ChessPiece in React.memo to prevent unnecessary re-renders of all 32 pieces
+// when the board state changes. It only re-renders if the piece type, color, or className changes.
+// Reduces SVG rendering overhead significantly during gameplay.
+export const ChessPiece: React.FC<PieceProps> = React.memo(({ color, type, className = 'w-full h-full' }) => {
   const isWhite = color === 'w';
 
   switch (type) {
@@ -303,4 +307,6 @@ export const ChessPiece: React.FC<PieceProps> = ({ color, type, className = 'w-f
     default:
       return null;
   }
-};
+});
+
+ChessPiece.displayName = 'ChessPiece';
