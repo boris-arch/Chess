@@ -40,22 +40,28 @@ export const MoveHistory: React.FC<MoveHistoryProps> = ({
   const [copiedFen, setCopiedFen] = React.useState(false);
 
   // Group moves into pairs (White move, Black move)
-  const pairedMoves: { moveNumber: number; white?: MoveRecord; whiteIdx?: number; black?: MoveRecord; blackIdx?: number }[] = [];
-  
-  for (let i = 0; i < moves.length; i += 2) {
-    pairedMoves.push({
-      moveNumber: Math.floor(i / 2) + 1,
-      white: moves[i],
-      whiteIdx: i,
-      black: moves[i + 1],
-      blackIdx: i + 1 < moves.length ? i + 1 : undefined,
-    });
-  }
+  const pairedMoves = React.useMemo(() => {
+    // ⚡ Bolt: Memoized paired moves array to prevent O(N) recalculations on simple history navigations (e.g. currentMoveIndex change)
+    const result: { moveNumber: number; white?: MoveRecord; whiteIdx?: number; black?: MoveRecord; blackIdx?: number }[] = [];
+    for (let i = 0; i < moves.length; i += 2) {
+      result.push({
+        moveNumber: Math.floor(i / 2) + 1,
+        white: moves[i],
+        whiteIdx: i,
+        black: moves[i + 1],
+        blackIdx: i + 1 < moves.length ? i + 1 : undefined,
+      });
+    }
+    return result;
+  }, [moves]);
 
   // Calculate material difference
-  const whiteMat = capturedWhite.reduce((sum, p) => sum + (PIECE_VALUES[p] || 0), 0);
-  const blackMat = capturedBlack.reduce((sum, p) => sum + (PIECE_VALUES[p] || 0), 0);
-  const whiteAdvantage = whiteMat - blackMat;
+  const whiteAdvantage = React.useMemo(() => {
+    // ⚡ Bolt: Memoized material difference to prevent unnecessary O(N) loop when only currentMoveIndex or FEN changes
+    const whiteMat = capturedWhite.reduce((sum, p) => sum + (PIECE_VALUES[p] || 0), 0);
+    const blackMat = capturedBlack.reduce((sum, p) => sum + (PIECE_VALUES[p] || 0), 0);
+    return whiteMat - blackMat;
+  }, [capturedWhite, capturedBlack]);
 
   const handleCopyFen = () => {
     navigator.clipboard.writeText(fen);

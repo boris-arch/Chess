@@ -1,0 +1,3 @@
+## 2024-05-24 - React Component Bottleneck
+**Learning:** Found a specific O(N) bottleneck in `src/components/MoveHistory.tsx` where move history lists (`pairedMoves`) and material advantages were recalculated from scratch on every render. Because simple UI navigation (like using arrows to go back a move) changes the `currentMoveIndex` prop, it forced entire move arrays to re-run loops even if the history itself hadn't changed.
+**Action:** Use `React.useMemo` to cache derived states (like mapped arrays or reduced values) that depend on props that change infrequently compared to other state (like active index) in heavy components.
