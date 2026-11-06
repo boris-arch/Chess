@@ -1,0 +1,3 @@
+## 2026-11-06 - Memoization in High-Frequency React Apps
+**Learning:** High-frequency real-time updates (like chess engine progress frames) can trigger rapid re-renders across the entire component tree. Even seemingly innocuous derived state calculations (like string mappings, Set creations, or calling `game.board()`) become severe performance bottlenecks when executed 30+ times per second.
+**Action:** Always wrap expensive derived state calculations (e.g., `identifyOpening`, `game.moves()`, `game.board()`) in `useMemo` hooks in root or layout components and their heavy children (like `ChessBoard`), especially when state like `engineLines` or `dragCursor` updates continuously.
