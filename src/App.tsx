@@ -127,6 +127,8 @@ export default function App() {
   moveHistoryRef.current = moveHistory;
   const currentMoveIndexRef = useRef(currentMoveIndex);
   currentMoveIndexRef.current = currentMoveIndex;
+  const fenRef = useRef(fen);
+  fenRef.current = fen;
 
   // Baseline evaluation refs for blunder tracking across positions
   const prevPositionScoreRef = useRef<{ fen: string; scoreCp: number } | null>(null);
@@ -152,7 +154,7 @@ export default function App() {
           currentCp = top.scoreCp;
         }
 
-        const currentFen = gameRef.current.fen();
+        const currentFen = fenRef.current;
 
         if (currentPositionScoreRef.current && currentPositionScoreRef.current.fen !== currentFen) {
           prevPositionScoreRef.current = {
@@ -262,7 +264,7 @@ export default function App() {
 
       const timer = setTimeout(async () => {
         try {
-          const move = await engineService.getEngineMove(game.fen(), botDifficulty);
+          const move = await engineService.getEngineMove(fen, botDifficulty);
           if (move) {
             handleMakeMove(move.from, move.to, move.promotion);
           }
@@ -343,7 +345,7 @@ export default function App() {
 
   // Execute a move on the board
   const handleMakeMove = (from: Square, to: Square, promotion: string = 'q'): boolean => {
-    const newGame = cloneChessInstance(game.fen());
+    const newGame = cloneChessInstance(fen);
 
     try {
       const moveRes = newGame.move({
@@ -372,7 +374,7 @@ export default function App() {
         to,
         captured: moveRes.captured as PieceSymbol | undefined,
         promotion: moveRes.promotion,
-        fenBefore: game.fen(),
+        fenBefore: fen,
         fenAfter: newGame.fen(),
         turn: game.turn(),
         moveNumber: Math.floor(moveHistory.length / 2) + 1,
@@ -450,7 +452,7 @@ export default function App() {
   // Edit Mode: Move ANY piece from `from` to `to` freely (without turn or legal move restrictions)
   const handleEditMovePiece = (from: Square, to: Square) => {
     if (from === to) return;
-    const edited = cloneChessInstance(game.fen());
+    const edited = cloneChessInstance(fen);
     const movingPiece = edited.get(from as ChessSquare);
     if (!movingPiece) return;
 
@@ -481,7 +483,7 @@ export default function App() {
     square: Square,
     piece: { color: PieceColor; type: PieceSymbol } | null
   ) => {
-    const edited = cloneChessInstance(game.fen());
+    const edited = cloneChessInstance(fen);
     const existing = edited.get(square as ChessSquare);
 
     // Deleting a piece
@@ -528,7 +530,7 @@ export default function App() {
 
   // Edit Mode: Change whose turn it is to move ('w' or 'b')
   const handleEditSetTurn = (newTurn: PieceColor) => {
-    const parts = game.fen().split(' ');
+    const parts = fen.split(' ');
     if (parts[1] === newTurn) return;
     parts[1] = newTurn;
     parts[3] = '-'; // Clear en-passant square
@@ -1240,7 +1242,7 @@ export default function App() {
               engineStatus={engineStatus}
               autoAnalyze={autoAnalyze}
               onToggleAutoAnalyze={() => setAutoAnalyze((prev) => !prev)}
-              onRecalculate={() => runAnalysis(game.fen())}
+              onRecalculate={() => runAnalysis(fen)}
               onPlayMove={handlePlayEngineMove}
               depthLimit={depthLimit}
               onChangeDepth={setDepthLimit}
