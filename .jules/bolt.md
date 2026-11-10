@@ -1,0 +1,3 @@
+## 2025-03-01 - [Avoid Micro-Optimizations for `game.fen()`]
+**Learning:** Caching `game.fen()` from `chess.js` (e.g., in a `useRef` to avoid repeated calls in subscriptions/closures) is an unnoticeable micro-optimization. The string generation is extremely fast (fraction of a millisecond) and not a real performance bottleneck. Attempting this optimization introduced a risk of ReferenceErrors and violated the constraint to only focus on measurable improvements.
+**Action:** Do not attempt to optimize lightweight library calls like `game.fen()` unless profiling proves they are a bottleneck. If no measurable optimization is found, stop and do not submit a PR.
