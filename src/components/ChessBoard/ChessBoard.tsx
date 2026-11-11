@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Chess, Square as ChessSquare } from 'chess.js';
 import { ChessPiece } from './ChessPieces';
 import { BoardTheme, ChessEngineMoveLine, PieceColor, PieceSymbol, Square } from '../../types/chess';
@@ -115,15 +115,22 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   const displayRanks = orientation === 'white' ? RANKS : [...RANKS].reverse();
 
   // Legal moves for selected square (only in normal mode)
-  const legalMovesForSelected =
-    !editMode && selectedSquare
+  // Optimization: Memoize expensive game.moves() to prevent recalculation on every engine frame
+  const legalMovesForSelected = useMemo(() => {
+    return !editMode && selectedSquare
       ? game.moves({ square: selectedSquare as ChessSquare, verbose: true })
       : [];
-  const legalTargetSquares = new Set(legalMovesForSelected.map((m) => m.to));
+  }, [editMode, selectedSquare, game]);
+
+  const legalTargetSquares = useMemo(() => {
+    return new Set(legalMovesForSelected.map((m) => m.to));
+  }, [legalMovesForSelected]);
 
   // Determine king in check square
-  let checkKingSquare: Square | null = null;
-  if (!editMode && game.inCheck()) {
+  // Optimization: Memoize expensive board iteration to prevent recalculation on every engine frame
+  const checkKingSquare = useMemo(() => {
+    if (editMode || !game.inCheck()) return null;
+
     const turnColor = game.turn();
     const board = game.board();
     for (let r = 0; r < 8; r++) {
@@ -132,13 +139,12 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
         if (piece && piece.type === 'k' && piece.color === turnColor) {
           const fileChar = String.fromCharCode(97 + f);
           const rankChar = String(8 - r);
-          checkKingSquare = `${fileChar}${rankChar}` as Square;
-          break;
+          return `${fileChar}${rankChar}` as Square;
         }
       }
-      if (checkKingSquare) break;
     }
-  }
+    return null;
+  }, [editMode, game]);
 
   // Convert client coordinates (x, y) to chess square with edge tolerance
   const getSquareFromCoords = useCallback(
